@@ -14,12 +14,6 @@ ITMMainEngine::ITMMainEngine(const ITMLibSettings *settings, const ITMRGBDCalib 
 
 	this->settings = settings;
 
- 	this->scene = new ITMScene<ITMVoxel, ITMVoxelIndex>(&(settings->sceneParams), settings->useSwapping, 
- 		settings->deviceType == ITMLibSettings::DEVICE_CUDA ? MEMORYDEVICE_CUDA : MEMORYDEVICE_CPU);
-	
- 	this->scene_second = new ITMScene<ITMVoxel, ITMVoxelIndex>(&(settings->sceneParams), settings->useSwapping, 
-  		settings->deviceType == ITMLibSettings::DEVICE_CUDA ? MEMORYDEVICE_CUDA : MEMORYDEVICE_CPU);
-
 	meshingEngine = NULL;
 	switch (settings->deviceType)
 	{
@@ -47,28 +41,20 @@ ITMMainEngine::ITMMainEngine(const ITMLibSettings *settings, const ITMRGBDCalib 
 		break;
 	}
 
-	mesh = NULL;
-
+//	mesh = NULL;
 //	if (createMeshingEngine) mesh = new ITMMesh(settings->deviceType == ITMLibSettings::DEVICE_CUDA ? MEMORYDEVICE_CUDA : MEMORYDEVICE_CPU);
 
-
 	Vector2i trackedImageSize = ITMTrackingController::GetTrackedImageSize(settings, imgSize_rgb, imgSize_d);
-	
- 	SpecificLocalMap = new ITMLocalMap(settings, visualisationEngine, trackedImageSize);
 
-	renderState_live = visualisationEngine->CreateRenderState(scene, trackedImageSize);
+        SpecificLocalMap = new ITMLocalMap(settings, visualisationEngine, trackedImageSize);	
 	renderState_freeview = NULL; //will be created by the visualisation engine
 
-	
-	denseMapper = new ITMDenseMapper<ITMVoxel, ITMVoxelIndex>(settings);
-	denseMapper->ResetScene(scene);
-
-	imuCalibrator = new ITMIMUCalibrator_iPad();
-	tracker = ITMTrackerFactory<ITMVoxel, ITMVoxelIndex>::Instance().Make(trackedImageSize, settings, lowLevelEngine, imuCalibrator, scene);
+        imuCalibrator = new ITMIMUCalibrator_iPad();
+	tracker = ITMTrackerFactory<ITMVoxel, ITMVoxelIndex>::Instance().Make(trackedImageSize, settings, lowLevelEngine, imuCalibrator, SpecificLocalMap->scene);
 	trackingController = new ITMTrackingController(tracker, visualisationEngine, lowLevelEngine, settings);
 
-	trackingState = trackingController->BuildTrackingState(trackedImageSize);
-	tracker->UpdateInitialPose(trackingState);
+	denseMapper = new ITMDenseMapper<ITMVoxel, ITMVoxelIndex>(settings);
+	denseMapper->ResetScene(SpecificLocalMap->scene);
 
 	view = NULL; // will be allocated by the view builder
 
@@ -79,10 +65,7 @@ ITMMainEngine::ITMMainEngine(const ITMLibSettings *settings, const ITMRGBDCalib 
 
 ITMMainEngine::~ITMMainEngine()
 {
-	delete renderState_live;
 	if (renderState_freeview!=NULL) delete renderState_freeview;
-
-	delete scene;
 
 	delete denseMapper;
 	delete trackingController;
@@ -93,7 +76,6 @@ ITMMainEngine::~ITMMainEngine()
 	delete lowLevelEngine;
 	delete viewBuilder;
 
-	delete trackingState;
 	if (view != NULL) delete view;
 
 	delete visualisationEngine;
@@ -105,14 +87,14 @@ ITMMainEngine::~ITMMainEngine()
 
 ITMMesh* ITMMainEngine::UpdateMesh(void)
 {
-	if (mesh != NULL) meshingEngine->MeshScene(mesh, scene);
+	if (mesh != NULL) meshingEngine->MeshScene(mesh, SpecificLocalMap->scene);
 	return mesh;
 }
 
 void ITMMainEngine::SaveSceneToMesh(const char *objFileName)
 {
 	if (mesh == NULL) return;
-	meshingEngine->MeshScene(mesh, scene);
+	meshingEngine->MeshScene(mesh, SpecificLocalMap->scene);
 	mesh->WriteSTL(objFileName);
 }
 
@@ -125,18 +107,18 @@ void ITMMainEngine::ProcessFrame(ITMUChar4Image *rgbImage, ITMShortImage *rawDep
 	if (!mainProcessingActive) return;
 
 	// tracking
-	trackingController->Track(trackingState, view);
+	trackingController->Track(SpecificLocalMap->trackingState, view);
 
 	// fusion
-	if (fusionActive) denseMapper->ProcessFrame(view, trackingState, scene, renderState_live);
+	if (fusionActive) denseMapper->ProcessFrame(view, SpecificLocalMap->trackingState, SpecificLocalMap->scene, SpecificLocalMap->renderState);
 
 	// raycast to renderState_live for tracking and free visualisation
-	trackingController->Prepare(trackingState, scene, view, renderState_live);
+	trackingController->Prepare(SpecificLocalMap->trackingState, SpecificLocalMap->scene, view, SpecificLocalMap->renderState);
 }
 
 Vector2i ITMMainEngine::GetImageSize(void) const
 {
-	return renderState_live->raycastImage->noDims;
+	return SpecificLocalMap->renderState->raycastImage->noDims;
 }
 
 void ITMMainEngine::GetImage(ITMUChar4Image *out, GetImageType getImageType, ITMPose *pose, ITMIntrinsics *intrinsics)
@@ -169,7 +151,7 @@ void ITMMainEngine::GetImage(ITMUChar4Image *out, GetImageType getImageType, ITM
 		break;
 	case ITMMainEngine::InfiniTAM_IMAGE_SCENERAYCAST:
 	{
-		ORUtils::Image<Vector4u> *srcImage = renderState_live->raycastImage;
+		ORUtils::Image<Vector4u> *srcImage = SpecificLocalMap->renderState->raycastImage;
 		out->ChangeDims(srcImage->noDims);
 		if (settings->deviceType == ITMLibSettings::DEVICE_CUDA)
 			out->SetFrom(srcImage, ORUtils::MemoryBlock<Vector4u>::CUDA_TO_CPU);
@@ -185,11 +167,11 @@ void ITMMainEngine::GetImage(ITMUChar4Image *out, GetImageType getImageType, ITM
 		if (getImageType == ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_VOLUME) type = IITMVisualisationEngine::RENDER_COLOUR_FROM_VOLUME;
 		else if (getImageType == ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_NORMAL) type = IITMVisualisationEngine::RENDER_COLOUR_FROM_NORMAL;
 		else if (getImageType == ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOURCODED) type = IITMVisualisationEngine::RENDER_COLOURCODED;
-		if (renderState_freeview == NULL) renderState_freeview = visualisationEngine->CreateRenderState(scene, out->noDims);
+		if (renderState_freeview == NULL) renderState_freeview = visualisationEngine->CreateRenderState(SpecificLocalMap->scene, out->noDims);
 
-		visualisationEngine->FindVisibleBlocks(scene, pose, intrinsics, renderState_freeview);
-		visualisationEngine->CreateExpectedDepths(scene, pose, intrinsics, renderState_freeview);
-		visualisationEngine->RenderImage(scene, pose, intrinsics, renderState_freeview, renderState_freeview->raycastImage, type);
+		visualisationEngine->FindVisibleBlocks(SpecificLocalMap->scene, pose, intrinsics, renderState_freeview);
+		visualisationEngine->CreateExpectedDepths(SpecificLocalMap->scene, pose, intrinsics, renderState_freeview);
+		visualisationEngine->RenderImage(SpecificLocalMap->scene, pose, intrinsics, renderState_freeview, renderState_freeview->raycastImage, type);
 
 		if (settings->deviceType == ITMLibSettings::DEVICE_CUDA)
 			out->SetFrom(renderState_freeview->raycastImage, ORUtils::MemoryBlock<Vector4u>::CUDA_TO_CPU);

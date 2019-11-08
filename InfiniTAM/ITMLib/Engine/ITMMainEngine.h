@@ -68,13 +68,12 @@ namespace ITMLib
 			ITMIMUCalibrator *imuCalibrator;
 
 			ITMView *view;
-			ITMTrackingState *trackingState;
+// 			ITMTrackingState *trackingState;
 
-			ITMScene<ITMVoxel, ITMVoxelIndex> *scene;
+// 			ITMScene<ITMVoxel, ITMVoxelIndex> *scene;
 			
 			ITMScene<ITMVoxel, ITMVoxelIndex> *scene_second;
 
-			ITMRenderState *renderState_live;
 			ITMRenderState *renderState_freeview;
 			
 			ITMVoxelMapGraphManager *mapManager;
@@ -100,10 +99,10 @@ namespace ITMLib
 			ITMView* GetView() { return view; }
 
 			/// Gives access to the current camera pose and additional tracking information
-			ITMTrackingState* GetTrackingState(void) { return trackingState; }
+			ITMTrackingState* GetTrackingState(void) { return SpecificLocalMap->trackingState; }
 
 			/// Gives access to the internal world representation
-			ITMScene<ITMVoxel, ITMVoxelIndex>* GetScene(void) { return scene; }
+			ITMScene<ITMVoxel, ITMVoxelIndex>* GetScene(void) { return SpecificLocalMap->scene; }
 
 			/// Process a frame with rgb and depth images and optionally a corresponding imu measurement
 			void ProcessFrame(ITMUChar4Image *rgbImage, ITMShortImage *rawDepthImage, ITMIMUMeasurement *imuMeasurement = NULL);
