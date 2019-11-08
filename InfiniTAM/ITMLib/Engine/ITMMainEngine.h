@@ -55,7 +55,7 @@ namespace ITMLib
 			bool fusionActive, mainProcessingActive;
 
 			ITMLowLevelEngine *lowLevelEngine;
-			IITMVisualisationEngine *visualisationEngine;
+			ITMVisualisationEngine<ITMVoxel, ITMVoxelIndex> *visualisationEngine;
 
 			ITMMeshingEngine<ITMVoxel, ITMVoxelIndex> *meshingEngine;
 			ITMMesh *mesh;
@@ -70,7 +70,7 @@ namespace ITMLib
 			ITMView *view;
 			ITMTrackingState *trackingState;
 
-			ITMScene<ITMVoxel, ITMVoxelIndex> *scene;
+// 			ITMScene<ITMVoxel, ITMVoxelIndex> *scene;
 			ITMRenderState *renderState_live;
 			ITMRenderState *renderState_freeview;
 			
