@@ -6,6 +6,7 @@
 #include "../Utils/ITMLibSettings.h"
 #include "../Engine/ITMActiveMapManager.h"
 #include "../Engine/ITMLocalMap.h"
+#include "../Engine/ITMGlobalAdjustmentEngine.h"
 
 /** \mainpage
     This is the API reference documentation for InfiniTAM. For a general
@@ -68,19 +69,16 @@ namespace ITMLib
 			ITMIMUCalibrator *imuCalibrator;
 
 			ITMView *view;
-// 			ITMTrackingState *trackingState;
-
-// 			ITMScene<ITMVoxel, ITMVoxelIndex> *scene;
-			
-			ITMScene<ITMVoxel, ITMVoxelIndex> *scene_second;
-
-			ITMRenderState *renderState_freeview;
 			
 			ITMVoxelMapGraphManager *mapManager;
+			
+			ITMRenderState *renderState_freeview;
+			
 			ITMActiveMapManager *mActiveDataManger;
 			
 			ITMLocalMap *SpecificLocalMap;
 			
+			ITMGlobalAdjustmentEngine* mGlobalAdjustmentEngine;
 
 		public:
 			enum GetImageType
@@ -99,8 +97,9 @@ namespace ITMLib
 			ITMView* GetView() { return view; }
 
 			/// Gives access to the current camera pose and additional tracking information
-			ITMTrackingState* GetTrackingState(void) { return SpecificLocalMap->trackingState; }
-
+			ITMTrackingState* GetTrackingState(void) const;
+			ITMLocalMap* GetPrimaryLocalMap(void) const;
+			
 			/// Gives access to the internal world representation
 			ITMScene<ITMVoxel, ITMVoxelIndex>* GetScene(void) { return SpecificLocalMap->scene; }
 

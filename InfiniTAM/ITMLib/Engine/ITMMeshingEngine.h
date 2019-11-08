@@ -8,6 +8,7 @@
 
 #include "../Objects/ITMScene.h"
 #include "../Objects/ITMMesh.h"
+#include "../Engine/ITMMapGraphManager.h"
 
 using namespace ITMLib::Objects;
 
@@ -19,7 +20,7 @@ namespace ITMLib
 		class ITMMeshingEngine
 		{
 		public:
-			virtual void MeshScene(ITMMesh *mesh, const ITMScene<TVoxel,TIndex> *scene) = 0;
+			virtual void MeshScene(ITMMesh *mesh, const ITMScene<TVoxel,TIndex>* scene) = 0;
 
 			ITMMeshingEngine(void) { }
 			virtual ~ITMMeshingEngine(void) { }

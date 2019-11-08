@@ -4,6 +4,45 @@
 
 using namespace ITMLib::Engine;
 
+
+// loop closure global adjustment runs on a separate thread
+static const bool separateThreadGlobalAdjustment = true;
+
+
+/* 　（有待理解）
+ * - 每当添加一个新的局部场景时，添加到“to be established 3D relations”列表中
+ * - 当检测到重定位时，将其添加到相同的列表中，保留3D relation关系上的任何现有信息
+ * 
+ * - 建立所有的3D relations:
+ * - 尝试在俩个场景进行跟踪，
+ * - 如果跟踪成功了，则添加到new candidates列表中
+ * - 如果在超过n_reloctrialframes帧的情况下仍然小于n_overlap个"new candidates",则不将该3D relations添加到new canidadates列表中
+ * - 如果至少存在n_overlap 个"new candidates":尝试计算3D relation,根据旧信息进行加权， 如果外点率小于p_relation_outliers且至少有n_overlap内点，则建立联系成功
+ */
+
+// - whenever a new local scene is added, add to list of "to be established 3D relations"
+// - whenever a relocalisation is detected, add to the same list, preserving any existing information on that 3D relation
+//
+// - for all 3D relations to be established :
+// - attempt tracking in both scenes
+// - if success, add to list of new candidates
+// - if less than n_overlap "new candidates" in more than n_reloctrialframes frames, discard
+// - if at least n_overlap "new candidates" :
+// - try to compute 3D relation, weighting old information accordingly
+// - if outlier ratio below p_relation_outliers and at least n_overlap inliers, success
+
+struct TodoListEntry {
+	TodoListEntry(int _activeDataID, bool _track, bool _fusion, bool _prepare)
+		: dataId(_activeDataID), track(_track), fusion(_fusion), prepare(_prepare), preprepare(false) {}
+	TodoListEntry(void) {}
+	//dataId为在active map中子地图的index
+	int dataId;
+	bool track;
+	bool fusion;
+	bool prepare;
+	bool preprepare;
+};
+
 ITMMainEngine::ITMMainEngine(const ITMLibSettings *settings, const ITMRGBDCalib *calib, Vector2i imgSize_rgb, Vector2i imgSize_d)
 {
 	// create all the things required for marching cubes and mesh extraction
@@ -55,9 +94,18 @@ ITMMainEngine::ITMMainEngine(const ITMLibSettings *settings, const ITMRGBDCalib 
 
 	denseMapper = new ITMDenseMapper<ITMVoxel, ITMVoxelIndex>(settings);
 	denseMapper->ResetScene(SpecificLocalMap->scene);
+	
+	mapManager = new ITMVoxelMapGraphManager(settings, visualisationEngine, denseMapper, trackedImageSize);
+	mActiveDataManger = new ITMActiveMapManager(mapManager);
+	
+	///初始化的时候将创建的LocalMap设为PrimaryLocalMap
+	mActiveDataManger->initiateNewLocalMap(true);
+	mGlobalAdjustmentEngine = new ITMGlobalAdjustmentEngine();
+	if(separateThreadGlobalAdjustment){
+	  mGlobalAdjustmentEngine->startSeparateThread();
+	}
 
 	view = NULL; // will be allocated by the view builder
-
 
 	fusionActive = true;
 	mainProcessingActive = true;
@@ -85,25 +133,48 @@ ITMMainEngine::~ITMMainEngine()
 	if (mesh != NULL) delete mesh;
 }
 
+ITMLocalMap* ITMMainEngine::GetPrimaryLocalMap(void) const{
+    int idx = mActiveDataManger->findPrimaryLocalMapIdx();
+    if(idx<0) {
+      idx = 0;
+    }
+    return mapManager->getLocalMap(idx);
+}
+
+ITMTrackingState* ITMMainEngine::GetTrackingState(void) const {
+    int idx = mActiveDataManger->findPrimaryDataIdx();
+    if(idx<0) {
+      idx = 0;
+    }
+    return mapManager->getLocalMap(idx)->trackingState;
+}
+
+
 ITMMesh* ITMMainEngine::UpdateMesh(void)
 {
 	if (mesh != NULL) meshingEngine->MeshScene(mesh, SpecificLocalMap->scene);
 	return mesh;
 }
 
+/// @brief 保存主子地图的mesh
 void ITMMainEngine::SaveSceneToMesh(const char *objFileName)
 {
-	if (mesh == NULL) return;
-	meshingEngine->MeshScene(mesh, SpecificLocalMap->scene);
+	if (meshingEngine == NULL) return;
+	ITMMesh *mesh = new ITMMesh(settings->deviceType == ITMLibSettings::DEVICE_CUDA ? MEMORYDEVICE_CUDA : MEMORYDEVICE_CPU);
+	meshingEngine->MeshScene(mesh, GetPrimaryLocalMap()->scene);
 	mesh->WriteSTL(objFileName);
+	delete mesh;
 }
 
 void ITMMainEngine::ProcessFrame(ITMUChar4Image *rgbImage, ITMShortImage *rawDepthImage, ITMIMUMeasurement *imuMeasurement)
 {
 	// prepare image and turn it into a depth image
-	if (imuMeasurement==NULL) viewBuilder->UpdateView(&view, rgbImage, rawDepthImage, settings->useBilateralFilter,settings->modelSensorNoise);
-	else viewBuilder->UpdateView(&view, rgbImage, rawDepthImage, settings->useBilateralFilter, imuMeasurement);
-
+	if (imuMeasurement==NULL) {
+	  viewBuilder->UpdateView(&view, rgbImage, rawDepthImage, settings->useBilateralFilter,settings->modelSensorNoise);
+	}
+	else {
+	  viewBuilder->UpdateView(&view, rgbImage, rawDepthImage, settings->useBilateralFilter, imuMeasurement);
+	}
 	if (!mainProcessingActive) return;
 
 	// tracking
