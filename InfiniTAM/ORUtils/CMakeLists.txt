@@ -14,6 +14,7 @@ LexicalCast.h
 MemoryBlock.h
 MemoryBlockPersister.h
 PlatformIndependence.h
+MemoryDeviceType.h
 )
 
 #################################################################

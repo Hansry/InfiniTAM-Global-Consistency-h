@@ -53,10 +53,11 @@ namespace ITMLib {
 
 		ITMLocalMap(const ITMLibSettings *settings, const ITMVisualisationEngine<ITMVoxel, ITMVoxelIndex> *visualisationEngine, const Vector2i & trackedImageSize)
 		{
-			MemoryDeviceType memoryType = settings->deviceType == ITMLibSettings::DEVICE_CUDA ? MEMORYDEVICE_CUDA : MEMORYDEVICE_CPU;
-			scene = new ITMScene<ITMVoxel, ITMVoxelIndex>(&settings->sceneParams, settings->useSwapping, memoryType);
-			renderState = visualisationEngine->CreateRenderState(scene, trackedImageSize);
-			trackingState = new ITMTrackingState(trackedImageSize, memoryType);
+		   
+// 			scene = new ITMScene<ITMVoxel, ITMVoxelIndex>(&settings->sceneParams, settings->useSwapping, 
+// 								      settings->deviceType == ITMLibSettings::DEVICE_CUDA ? MEMORYDEVICE_CUDA : MEMORYDEVICE_CPU);
+// 			renderState = visualisationEngine->CreateRenderState(scene, trackedImageSize);
+// 			trackingState = new ITMTrackingState(trackedImageSize, memoryType);
 		}
 		~ITMLocalMap(void)
 		{

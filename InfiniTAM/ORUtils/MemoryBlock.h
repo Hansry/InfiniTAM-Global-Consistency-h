@@ -1,14 +1,15 @@
-// Copyright 2014-2015 Isis Innovation Limited and the authors of InfiniTAM
+// Copyright 2014-2017 Oxford University Innovation Limited and the authors of InfiniTAM
 
 #pragma once
 
+#include "MemoryDeviceType.h"
 #include "PlatformIndependence.h"
+
+#ifndef __METALC__
 
 #ifndef COMPILE_WITHOUT_CUDA
 #include "CUDADefines.h"
 #endif
-
-#ifndef __METALC__
 
 #ifdef COMPILE_WITH_METAL
 #include "MetalContext.h"
@@ -16,13 +17,6 @@
 
 #include <stdlib.h>
 #include <string.h>
-
-#endif
-
-#ifndef MEMORY_DEVICE_TYPE
-#define MEMORY_DEVICE_TYPE
-enum MemoryDeviceType { MEMORYDEVICE_CPU, MEMORYDEVICE_CUDA };
-#endif 
 
 namespace ORUtils
 {
@@ -33,21 +27,15 @@ namespace ORUtils
 	class MemoryBlock
 	{
 	protected:
-#ifndef __METALC__
 		bool isAllocated_CPU, isAllocated_CUDA, isMetalCompatible;
-#endif
 		/** Pointer to memory on CPU host. */
 		DEVICEPTR(T)* data_cpu;
 
 		/** Pointer to memory on GPU, if available. */
 		DEVICEPTR(T)* data_cuda;
 
-#ifndef __METALC__
-
 #ifdef COMPILE_WITH_METAL
 		void *data_metalBuffer;
-#endif
-
 #endif
 	public:
 		enum MemoryCopyDirection { CPU_TO_CPU, CPU_TO_CUDA, CUDA_TO_CPU, CUDA_TO_CUDA };
@@ -60,8 +48,8 @@ namespace ORUtils
 		{
 			switch (memoryType)
 			{
-			case MEMORYDEVICE_CPU: return data_cpu;
-			case MEMORYDEVICE_CUDA: return data_cuda;
+			  case MEMORYDEVICE_CPU: return data_cpu;
+			  case MEMORYDEVICE_CUDA: return data_cuda;
 			}
 
 			return 0;
@@ -72,15 +60,12 @@ namespace ORUtils
 		{
 			switch (memoryType)
 			{
-			case MEMORYDEVICE_CPU: return data_cpu;
-			case MEMORYDEVICE_CUDA: return data_cuda;
+			   case MEMORYDEVICE_CPU: return data_cpu;
+			   case MEMORYDEVICE_CUDA: return data_cuda;
 			}
 
 			return 0;
 		}
-
-#ifndef __METALC__
-
 #ifdef COMPILE_WITH_METAL
 		inline const void *GetMetalBuffer() const { return data_metalBuffer; }
 #endif
@@ -94,6 +79,10 @@ namespace ORUtils
 			this->isAllocated_CPU = false;
 			this->isAllocated_CUDA = false;
 			this->isMetalCompatible = false;
+
+#ifndef NDEBUG // When building in debug mode always allocate both on the CPU and the GPU
+			if (allocate_CUDA) allocate_CPU = true;
+#endif
 
 			Allocate(dataSize, allocate_CPU, allocate_CUDA, metalCompatible);
 			Clear();
@@ -111,8 +100,16 @@ namespace ORUtils
 
 			switch (memoryType)
 			{
-			case MEMORYDEVICE_CPU: Allocate(dataSize, true, false, true); break;
-			case MEMORYDEVICE_CUDA: Allocate(dataSize, false, true, true); break;
+				case MEMORYDEVICE_CPU: Allocate(dataSize, true, false, true); break;
+				case MEMORYDEVICE_CUDA:
+				{
+#ifndef NDEBUG // When building in debug mode always allocate both on the CPU and the GPU
+					Allocate(dataSize, true, true, true);
+#else
+					Allocate(dataSize, false, true, true);
+#endif
+					break;
+				}
 			}
 
 			Clear();
@@ -125,6 +122,27 @@ namespace ORUtils
 #ifndef COMPILE_WITHOUT_CUDA
 			if (isAllocated_CUDA) ORcudaSafeCall(cudaMemset(data_cuda, defaultValue, dataSize * sizeof(T)));
 #endif
+		}
+
+		/** Resize a memory block, losing all old data.
+		Essentially any previously allocated data is
+		released, new memory is allocated.
+		*/
+		void Resize(size_t newDataSize, bool forceReallocation = true)
+		{
+			if(newDataSize == dataSize) return;
+
+			if(newDataSize > dataSize || forceReallocation)
+			{
+				bool allocate_CPU = this->isAllocated_CPU;
+				bool allocate_CUDA = this->isAllocated_CUDA;
+				bool metalCompatible = this->isMetalCompatible;
+
+				this->Free();
+				this->Allocate(newDataSize, allocate_CPU, allocate_CUDA, metalCompatible);
+			}
+
+			this->dataSize = newDataSize;
 		}
 
 		/** Transfer data from CPU to GPU, if possible. */
@@ -145,6 +163,7 @@ namespace ORUtils
 		/** Copy data */
 		void SetFrom(const MemoryBlock<T> *source, MemoryCopyDirection memoryCopyDirection)
 		{
+			Resize(source->dataSize);
 			switch (memoryCopyDirection)
 			{
 			case CPU_TO_CPU:
@@ -162,6 +181,27 @@ namespace ORUtils
 				break;
 #endif
 			default: break;
+			}
+		}
+
+		/** Get an individual element of the memory block from either the CPU or GPU. */
+		T GetElement(int n, MemoryDeviceType memoryType) const
+		{
+			switch(memoryType)
+			{
+				case MEMORYDEVICE_CPU:
+				{
+					return this->data_cpu[n];
+				}
+#ifndef COMPILE_WITHOUT_CUDA
+				case MEMORYDEVICE_CUDA:
+				{
+					T result;
+					ORcudaSafeCall(cudaMemcpy(&result, this->data_cuda + n, sizeof(T), cudaMemcpyDeviceToHost));
+					return result;
+				}
+#endif
+				default: throw std::runtime_error("Invalid memory type");
 			}
 		}
 
@@ -262,9 +302,23 @@ namespace ORUtils
 			}
 		}
 
+		void Swap(MemoryBlock<T>& rhs)
+		{
+			std::swap(this->dataSize, rhs.dataSize);
+			std::swap(this->data_cpu, rhs.data_cpu);
+			std::swap(this->data_cuda, rhs.data_cuda);
+#ifdef COMPILE_WITH_METAL
+			std::swap(this->data_metalBuffer, rhs.data_metalBuffer);
+#endif
+			std::swap(this->isAllocated_CPU, rhs.isAllocated_CPU);
+			std::swap(this->isAllocated_CUDA, rhs.isAllocated_CUDA);
+			std::swap(this->isMetalCompatible, rhs.isMetalCompatible);
+		}
+
 		// Suppress the default copy constructor and assignment operator
 		MemoryBlock(const MemoryBlock&);
 		MemoryBlock& operator=(const MemoryBlock&);
-#endif
 	};
-} 
+}
+
+#endif
