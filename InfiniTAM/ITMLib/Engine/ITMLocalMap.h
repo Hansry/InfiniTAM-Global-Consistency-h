@@ -51,7 +51,7 @@ namespace ITMLib {
 		ConstraintList relations;
 		ITMLib::Objects::ITMPose estimatedGlobalPose;
 
-		ITMLocalMap(const ITMLibSettings *settings, ITMVisualisationEngine<ITMVoxel, ITMVoxelIndex> *visualisationEngine, const Vector2i & trackedImageSize)
+		ITMLocalMap(const ITMLibSettings *settings, const ITMVisualisationEngine<ITMVoxel, ITMVoxelIndex> *visualisationEngine, const Vector2i & trackedImageSize)
 		{
 			MemoryDeviceType memoryType = settings->deviceType == ITMLibSettings::DEVICE_CUDA ? MEMORYDEVICE_CUDA : MEMORYDEVICE_CPU;
 			scene = new ITMScene<ITMVoxel, ITMVoxelIndex>(&settings->sceneParams, settings->useSwapping, memoryType);

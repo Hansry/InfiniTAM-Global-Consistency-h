@@ -31,7 +31,7 @@ namespace ITMLib
 
 		public:
 			void Track(ITMTrackingState *trackingState, const ITMView *view);
-			void Prepare(ITMTrackingState *trackingState, const ITMView *view, ITMRenderState *renderState);
+			void Prepare(ITMTrackingState *trackingState, const ITMScene<ITMVoxel, ITMVoxelIndex> *scene, const ITMView *view, ITMRenderState *renderState);
 
 			ITMTrackingController(ITMTracker *tracker, const ITMVisualisationEngine<ITMVoxel, ITMVoxelIndex> *visualisationEngine, const ITMLowLevelEngine *lowLevelEngine,
 				const ITMLibSettings *settings)

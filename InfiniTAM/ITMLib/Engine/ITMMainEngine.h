@@ -70,14 +70,14 @@ namespace ITMLib
 			ITMView *view;
 			ITMTrackingState *trackingState;
 
-// 			ITMScene<ITMVoxel, ITMVoxelIndex> *scene;
+			ITMScene<ITMVoxel, ITMVoxelIndex> *scene;
 			ITMRenderState *renderState_live;
 			ITMRenderState *renderState_freeview;
 			
 			ITMVoxelMapGraphManager *mapManager;
 			ITMActiveMapManager *mActiveDataManger;
 			
-			ITMLocalMap *SpecificLocalMap;
+// 			ITMLocalMap *SpecificLocalMap;
 
 		public:
 			enum GetImageType
