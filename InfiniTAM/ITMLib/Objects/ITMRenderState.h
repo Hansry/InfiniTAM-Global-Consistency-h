@@ -46,7 +46,11 @@ namespace ITMLib
 			ORUtils::Image<int> *fwdProjMissingPoints;
 			int noFwdProjMissingPoints;
 
+			//在大多数情况下使用raycastImage,输出是8-bit的图片
 			ORUtils::Image<Vector4u> *raycastImage;
+			
+			//输出为深度图，float类型
+			ORUtils::Image<float> *raycastFloatImage;
 
 			ITMRenderState(const Vector2i &imgSize, float vf_min, float vf_max, MemoryDeviceType memoryType)
 			{

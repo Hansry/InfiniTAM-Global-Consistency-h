@@ -74,6 +74,19 @@ template<class TVoxel, class TIndex>
 __global__ void renderColourcoded_device(Vector4u *outRendering, const Vector4f *ptsRay, const TVoxel *voxelData,
 	const typename TIndex::IndexData *voxelIndex, Vector2i imgSize, Vector3f lightSource);
 
+
+/// \brief Renders a depth map using ray casting.
+template<class TVoxel, class TIndex>
+__global__ void renderColourFromDepth_device(
+		float *outFloatRendering,
+		const Vector4f *ptsRay,
+		const TVoxel *voxelData,
+		const typename TIndex::IndexData *voxelIndex,
+		Vector2i imgSize,
+		Vector3f lightSource,
+        Matrix4f camPose,
+        float voxelSizeMeters);
+
 // class implementation
 
 template<class TVoxel, class TIndex>
@@ -334,7 +347,7 @@ static void GenericRaycast(const ITMScene<TVoxel, TIndex> *scene, const Vector2i
 
 template<class TVoxel, class TIndex>
 static void RenderImage_common(const ITMScene<TVoxel, TIndex> *scene, const ITMPose *pose, const ITMIntrinsics *intrinsics, const ITMRenderState *renderState,
-	ITMUChar4Image *outputImage, IITMVisualisationEngine::RenderImageType type)
+	ITMUChar4Image *outputImage, ITMFloatImage* outputFloatImage, IITMVisualisationEngine::RenderImageType type)
 {
 	Vector2i imgSize = outputImage->noDims;
 	Matrix4f invM = pose->GetInvM();
@@ -343,6 +356,7 @@ static void RenderImage_common(const ITMScene<TVoxel, TIndex> *scene, const ITMP
 
 	Vector3f lightSource = -Vector3f(invM.getColumn(2));
 	Vector4u *outRendering = outputImage->GetData(MEMORYDEVICE_CUDA);
+	float *outFloatRendering = outputFloatImage->GetData(MEMORYDEVICE_CUDA);
 	Vector4f *pointsRay = renderState->raycastResult->GetData(MEMORYDEVICE_CUDA);
 
 	dim3 cudaBlockSize(8, 8);
@@ -367,6 +381,18 @@ static void RenderImage_common(const ITMScene<TVoxel, TIndex> *scene, const ITMP
 		renderColourFromNormal_device<TVoxel, TIndex> <<<gridSize, cudaBlockSize>>>(outRendering, pointsRay, scene->localVBA.GetVoxelBlocks(),
 			scene->index.getIndexData(), imgSize, lightSource);
 		break;
+	case IITMVisualisationEngine::RENDER_DEPTH_MAP:{
+	        renderColourFromDepth_device<TVoxel, TIndex> <<<gridSize, cudaBlockSize>>>(
+				outFloatRendering,
+				pointsRay,
+				scene->localVBA.GetVoxelBlocks(),
+				scene->index.getIndexData(),
+				imgSize,
+				lightSource,
+				pose->GetM(),
+				scene->sceneParams->voxelSize
+		);
+	}
 	case IITMVisualisationEngine::RENDER_SHADED_GREYSCALE:
 	default:
 		renderGrey_device<TVoxel, TIndex> <<<gridSize, cudaBlockSize>>>(outRendering, pointsRay, scene->localVBA.GetVoxelBlocks(),
@@ -487,23 +513,23 @@ static void ForwardRender_common(const ITMScene<TVoxel, TIndex> *scene, const IT
 
 template<class TVoxel, class TIndex>
 void ITMVisualisationEngine_CUDA<TVoxel, TIndex>::RenderImage(const ITMScene<TVoxel, TIndex> *scene, const ITMPose *pose, const ITMIntrinsics *intrinsics, const ITMRenderState *renderState, 
-	ITMUChar4Image *outputImage, IITMVisualisationEngine::RenderImageType type) const
+	ITMUChar4Image *outputImage, ITMFloatImage *outputFloatImage, IITMVisualisationEngine::RenderImageType type) const
 {
-	RenderImage_common(scene, pose, intrinsics, renderState, outputImage, type);
+	RenderImage_common(scene, pose, intrinsics, renderState, outputImage, outputFloatImage, type);
 }
 
 template<class TVoxel>
 void ITMVisualisationEngine_CUDA<TVoxel, ITMVoxelBlockHash>::RenderImage(const ITMScene<TVoxel, ITMVoxelBlockHash> *scene, const ITMPose *pose, const ITMIntrinsics *intrinsics, 
-	const ITMRenderState *renderState, ITMUChar4Image *outputImage, IITMVisualisationEngine::RenderImageType type) const
+	const ITMRenderState *renderState, ITMUChar4Image *outputImage, ITMFloatImage *outputFloatImage, IITMVisualisationEngine::RenderImageType type) const
 {
-	RenderImage_common(scene, pose, intrinsics, renderState, outputImage, type);
+	RenderImage_common(scene, pose, intrinsics, renderState, outputImage, outputFloatImage, type);
 }
 
 template<class TVoxel>
 void ITMVisualisationEngine_CUDA<TVoxel,ITMVoxelBlockHHash>::RenderImage(const ITMScene<TVoxel, ITMVoxelBlockHHash> *scene, const ITMPose *pose, const ITMIntrinsics *intrinsics,
-	const ITMRenderState *renderState, ITMUChar4Image *outputImage, IITMVisualisationEngine::RenderImageType type) const
+	const ITMRenderState *renderState, ITMUChar4Image *outputImage, ITMFloatImage *outputFloatImage, IITMVisualisationEngine::RenderImageType type) const
 {
-	RenderImage_common(scene, pose, intrinsics, renderState, outputImage, type);
+	RenderImage_common(scene, pose, intrinsics, renderState, outputImage, outputFloatImage, type);
 }
 
 template<class TVoxel, class TIndex>
@@ -825,6 +851,7 @@ __global__ void renderColourFromNormal_device(Vector4u *outRendering, const Vect
 	processPixelNormal<TVoxel, TIndex>(outRendering[locId], ptRay.toVector3(), ptRay.w > 0, voxelData, voxelIndex, lightSource);
 }
 
+
 template<class TVoxel, class TIndex>
 __global__ void renderColourcoded_device(Vector4u *outRendering, const Vector4f *ptsRay, const TVoxel *voxelData,
 	const typename TIndex::IndexData *voxelIndex, Vector2i imgSize, Vector3f lightSource)
@@ -839,6 +866,34 @@ __global__ void renderColourcoded_device(Vector4u *outRendering, const Vector4f 
 
 	PixelColourcoder<TVoxel,TIndex>::process(outRendering[locId], ptRay.toVector3(), ptRay.w > 0, voxelData, voxelIndex, lightSource);
 }
+
+template<class TVoxel, class TIndex>
+__global__ void renderColourFromDepth_device(
+	float *outFloatRendering,
+	const Vector4f *ptsRay,
+	const TVoxel *voxelData,
+	const typename TIndex::IndexData *voxelIndex,
+	Vector2i imgSize,
+	Vector3f lightSource,
+    Matrix4f camPose,
+	float voxelSizeMeters
+) {
+	int x = (threadIdx.x + blockIdx.x * blockDim.x), y = (threadIdx.y + blockIdx.y * blockDim.y);
+	if (x >= imgSize.x || y >= imgSize.y) {
+		return;
+	}
+	int locId = x + y * imgSize.x;
+
+	Vector4f ptRay = ptsRay[locId];
+	processPixelColourDepth<TVoxel, TIndex>(
+			outFloatRendering[locId],
+			ptRay.toVector3(),
+			ptRay.w > 0,
+			camPose,
+			voxelSizeMeters
+	);
+
+};
 
 template<class TVoxel, class TIndex>
 __global__ void renderPointCloud_device(Vector4u *outRendering, Vector4f *locations, Vector4f *colours, uint *noTotalPoints,

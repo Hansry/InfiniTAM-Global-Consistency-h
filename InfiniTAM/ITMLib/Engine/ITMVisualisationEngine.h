@@ -23,6 +23,7 @@ namespace ITMLib
 				RENDER_SHADED_GREYSCALE,
 				RENDER_COLOUR_FROM_VOLUME,
 				RENDER_COLOUR_FROM_NORMAL,
+				RENDER_DEPTH_MAP,
 				RENDER_COLOURCODED
 			};
 			
@@ -86,7 +87,8 @@ namespace ITMLib
 
 			/** This will render an image using raycasting. */
 			virtual void RenderImage(const ITMScene<TVoxel,TIndex> *scene, const ITMPose *pose, const ITMIntrinsics *intrinsics,
-				const ITMRenderState *renderState, ITMUChar4Image *outputImage, RenderImageType type = RENDER_SHADED_GREYSCALE) const = 0;
+				const ITMRenderState *renderState, ITMUChar4Image *outputImage, 
+			        ITMFloatImage *outputFloatImage, RenderImageType type = RENDER_SHADED_GREYSCALE) const = 0;
 
 			/** Finds the scene surface using raycasting. */
 			virtual void FindSurface(const ITMScene<TVoxel,TIndex> *scene, const ITMPose *pose, const ITMIntrinsics *intrinsics,

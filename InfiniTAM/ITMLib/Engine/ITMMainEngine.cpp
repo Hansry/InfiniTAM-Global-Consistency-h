@@ -192,61 +192,98 @@ Vector2i ITMMainEngine::GetImageSize(void) const
 	return SpecificLocalMap->renderState->raycastImage->noDims;
 }
 
-void ITMMainEngine::GetImage(ITMUChar4Image *out, GetImageType getImageType, ITMPose *pose, ITMIntrinsics *intrinsics)
+/// @brief 将场景转换成图片进行可视化
+void ITMMainEngine::GetImage(ITMUChar4Image *out, ITMFloatImage *outFloat, GetImageType getImageType, ITMPose *pose, ITMIntrinsics *intrinsics)
 {
 	if (view == NULL) return;
-
-	out->Clear();
-
+    
+	if (nullptr != out) {
+	  out->Clear();
+	}
+	if (nullptr != outFloat){
+	  outFloat->Clear();
+	}
+	
+	auto noDims  = (nullptr != out) ? out->noDims : outFloat->noDims;
+	
 	switch (getImageType)
 	{
-	case ITMMainEngine::InfiniTAM_IMAGE_ORIGINAL_RGB:
+	case ITMMainEngine::InfiniTAM_IMAGE_ORIGINAL_RGB:{
 		out->ChangeDims(view->rgb->noDims);
-		if (settings->deviceType == ITMLibSettings::DEVICE_CUDA) 
+		if (settings->deviceType == ITMLibSettings::DEVICE_CUDA) {
 			out->SetFrom(view->rgb, ORUtils::MemoryBlock<Vector4u>::CUDA_TO_CPU);
-		else out->SetFrom(view->rgb, ORUtils::MemoryBlock<Vector4u>::CPU_TO_CPU);
+		}
+		else {
+		  out->SetFrom(view->rgb, ORUtils::MemoryBlock<Vector4u>::CPU_TO_CPU);
+		}
 		break;
-	case ITMMainEngine::InfiniTAM_IMAGE_ORIGINAL_DEPTH:
+	}
+	case ITMMainEngine::InfiniTAM_IMAGE_ORIGINAL_DEPTH: {
 		out->ChangeDims(view->depth->noDims);
-		if (settings->trackerType==ITMLib::Objects::ITMLibSettings::TRACKER_WICP)
-		{
+		if (settings->trackerType==ITMLib::Objects::ITMLibSettings::TRACKER_WICP){
 			if (settings->deviceType == ITMLibSettings::DEVICE_CUDA) view->depthUncertainty->UpdateHostFromDevice();
 			ITMVisualisationEngine<ITMVoxel, ITMVoxelIndex>::WeightToUchar4(out, view->depthUncertainty);
 		}
-		else
-		{
+		else{
 			if (settings->deviceType == ITMLibSettings::DEVICE_CUDA) view->depth->UpdateHostFromDevice();
 			ITMVisualisationEngine<ITMVoxel, ITMVoxelIndex>::DepthToUchar4(out, view->depth);
 		}
-
 		break;
-	case ITMMainEngine::InfiniTAM_IMAGE_SCENERAYCAST:
-	{
+	}
+	case ITMMainEngine::InfiniTAM_IMAGE_SCENERAYCAST:{
 		ORUtils::Image<Vector4u> *srcImage = SpecificLocalMap->renderState->raycastImage;
 		out->ChangeDims(srcImage->noDims);
-		if (settings->deviceType == ITMLibSettings::DEVICE_CUDA)
+		if (settings->deviceType == ITMLibSettings::DEVICE_CUDA){
 			out->SetFrom(srcImage, ORUtils::MemoryBlock<Vector4u>::CUDA_TO_CPU);
-		else out->SetFrom(srcImage, ORUtils::MemoryBlock<Vector4u>::CPU_TO_CPU);	
+		}
+		else {
+		  out->SetFrom(srcImage, ORUtils::MemoryBlock<Vector4u>::CPU_TO_CPU);	
+		}
 		break;
 	}
 	case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_SHADED:
 	case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_VOLUME:
 	case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_NORMAL:
 	case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOURCODED:
+	case ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_DEPTH:
 	{
 		IITMVisualisationEngine::RenderImageType type = IITMVisualisationEngine::RENDER_SHADED_GREYSCALE;
-		if (getImageType == ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_VOLUME) type = IITMVisualisationEngine::RENDER_COLOUR_FROM_VOLUME;
-		else if (getImageType == ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_NORMAL) type = IITMVisualisationEngine::RENDER_COLOUR_FROM_NORMAL;
-		else if (getImageType == ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOURCODED) type = IITMVisualisationEngine::RENDER_COLOURCODED;
-		if (renderState_freeview == NULL) renderState_freeview = visualisationEngine->CreateRenderState(SpecificLocalMap->scene, out->noDims);
-
+		if (getImageType == ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_VOLUME) {
+		  type = IITMVisualisationEngine::RENDER_COLOUR_FROM_VOLUME;
+		}
+		else if (getImageType == ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOUR_FROM_NORMAL) {
+		  type = IITMVisualisationEngine::RENDER_COLOUR_FROM_NORMAL;
+		}
+		else if (getImageType == ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_COLOURCODED) {
+		  type = IITMVisualisationEngine::RENDER_COLOURCODED;
+		}
+		else if (getImageType == ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_DEPTH){
+		  type = IITMVisualisationEngine::RENDER_DEPTH_MAP;
+		}
+		if (renderState_freeview == NULL) {
+		  renderState_freeview = visualisationEngine->CreateRenderState(SpecificLocalMap->scene, out->noDims);
+		}
 		visualisationEngine->FindVisibleBlocks(SpecificLocalMap->scene, pose, intrinsics, renderState_freeview);
 		visualisationEngine->CreateExpectedDepths(SpecificLocalMap->scene, pose, intrinsics, renderState_freeview);
-		visualisationEngine->RenderImage(SpecificLocalMap->scene, pose, intrinsics, renderState_freeview, renderState_freeview->raycastImage, type);
-
-		if (settings->deviceType == ITMLibSettings::DEVICE_CUDA)
-			out->SetFrom(renderState_freeview->raycastImage, ORUtils::MemoryBlock<Vector4u>::CUDA_TO_CPU);
-		else out->SetFrom(renderState_freeview->raycastImage, ORUtils::MemoryBlock<Vector4u>::CPU_TO_CPU);
+		visualisationEngine->RenderImage(SpecificLocalMap->scene, 
+						 pose, 
+						 intrinsics, 
+				                 renderState_freeview, 
+				                 renderState_freeview->raycastImage, 
+				                 renderState_freeview->raycastFloatImage,
+				                 type);
+		
+		if (settings->deviceType == ITMLibSettings::DEVICE_CUDA){
+		  if(getImageType == ITMMainEngine::InfiniTAM_IMAGE_FREECAMERA_DEPTH){
+			outFloat->SetFrom(renderState_freeview->raycastFloatImage, ORUtils::MemoryBlock<float>::CUDA_TO_CPU);
+		  }
+		  else{
+		        out->SetFrom(renderState_freeview->raycastImage, ORUtils::MemoryBlock<Vector4u>::CUDA_TO_CPU);
+		  }
+		}
+		else {
+		        out->SetFrom(renderState_freeview->raycastImage, ORUtils::MemoryBlock<Vector4u>::CPU_TO_CPU);
+		}
 		break;
 	}
 	case ITMMainEngine::InfiniTAM_IMAGE_UNKNOWN:

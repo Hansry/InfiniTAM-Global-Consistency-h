@@ -302,7 +302,7 @@ static void GenericRaycast(const ITMScene<TVoxel,TIndex> *scene, const Vector2i&
 
 template<class TVoxel, class TIndex>
 static void RenderImage_common(const ITMScene<TVoxel,TIndex> *scene, const ITMPose *pose, const ITMIntrinsics *intrinsics, 
-	const ITMRenderState *renderState, ITMUChar4Image *outputImage, IITMVisualisationEngine::RenderImageType type)
+	const ITMRenderState *renderState, ITMUChar4Image *outputImage, ITMFloatImage *outputFloatImage, IITMVisualisationEngine::RenderImageType type)
 {
 	Vector2i imgSize = outputImage->noDims;
 	Matrix4f invM = pose->GetInvM();
@@ -481,16 +481,16 @@ static void ForwardRender_common(const ITMScene<TVoxel, TIndex> *scene, const IT
 
 template<class TVoxel, class TIndex>
 void ITMVisualisationEngine_CPU<TVoxel,TIndex>::RenderImage(const ITMScene<TVoxel, TIndex> *scene, const ITMPose *pose, const ITMIntrinsics *intrinsics, 
-	const ITMRenderState *renderState, ITMUChar4Image *outputImage, IITMVisualisationEngine::RenderImageType type) const
+	const ITMRenderState *renderState, ITMUChar4Image *outputImage, ITMFloatImage *outputFloatImage, IITMVisualisationEngine::RenderImageType type) const
 {
-	RenderImage_common(scene, pose, intrinsics, renderState, outputImage, type);
+	RenderImage_common(scene, pose, intrinsics, renderState, outputImage, outputFloatImage, type);
 }
 
 template<class TVoxel>
 void ITMVisualisationEngine_CPU<TVoxel,ITMVoxelBlockHash>::RenderImage(const ITMScene<TVoxel, ITMVoxelBlockHash> *scene, const ITMPose *pose,  const ITMIntrinsics *intrinsics, 
-	const ITMRenderState *renderState, ITMUChar4Image *outputImage, IITMVisualisationEngine::RenderImageType type) const
+	const ITMRenderState *renderState, ITMUChar4Image *outputImage, ITMFloatImage *outputFloatImage, IITMVisualisationEngine::RenderImageType type) const
 {
-	RenderImage_common(scene, pose, intrinsics, renderState, outputImage, type);
+	RenderImage_common(scene, pose, intrinsics, renderState, outputImage, outputFloatImage, type);
 }
 
 template<class TVoxel, class TIndex>
@@ -595,9 +595,10 @@ static int RenderPointCloud(Vector4u *outRendering, Vector4f *locations, Vector4
 }
 
 template<class TVoxel>
-void ITMVisualisationEngine_CPU<TVoxel,ITMVoxelBlockHHash>::RenderImage(const ITMScene<TVoxel, ITMVoxelBlockHHash> *scene, const ITMPose *pose, const ITMIntrinsics *intrinsics, const ITMRenderState *state, ITMUChar4Image *outputImage, IITMVisualisationEngine::RenderImageType type) const
+void ITMVisualisationEngine_CPU<TVoxel,ITMVoxelBlockHHash>::RenderImage(const ITMScene<TVoxel, ITMVoxelBlockHHash> *scene, const ITMPose *pose, const ITMIntrinsics *intrinsics, const ITMRenderState *state, 
+									ITMUChar4Image *outputImage, ITMFloatImage *outputFloatImage, IITMVisualisationEngine::RenderImageType type) const
 {
-	RenderImage_common(scene, pose, intrinsics, state, outputImage, type);
+	RenderImage_common(scene, pose, intrinsics, state, outputImage, outputFloatImage, type);
 }
 
 template<class TVoxel>
