@@ -59,6 +59,7 @@ namespace ITMLib
 				forwardProjection = new ORUtils::Image<Vector4f>(imgSize, memoryType);
 				fwdProjMissingPoints = new ORUtils::Image<int>(imgSize, memoryType);
 				raycastImage = new ORUtils::Image<Vector4u>(imgSize, memoryType);
+				raycastFloatImage = new ORUtils::Image<float>(imgSize, memoryType);
 
 				ORUtils::Image<Vector2f> *buffImage = new ORUtils::Image<Vector2f>(imgSize, MEMORYDEVICE_CPU);
 
