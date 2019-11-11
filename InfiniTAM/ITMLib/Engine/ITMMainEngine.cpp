@@ -113,8 +113,9 @@ ITMMainEngine::ITMMainEngine(const ITMLibSettings *settings, const ITMRGBDCalib 
 
 ITMMainEngine::~ITMMainEngine()
 {
-	if (renderState_freeview!=NULL) delete renderState_freeview;
-
+	if (renderState_freeview!=NULL) {
+	  delete renderState_freeview;
+	}
 	delete denseMapper;
 	delete trackingController;
 
@@ -261,7 +262,7 @@ void ITMMainEngine::GetImage(ITMUChar4Image *out, ITMFloatImage *outFloat, GetIm
 		  type = IITMVisualisationEngine::RENDER_DEPTH_MAP;
 		}
 		if (renderState_freeview == NULL) {
-		  renderState_freeview = visualisationEngine->CreateRenderState(SpecificLocalMap->scene, out->noDims);
+		   renderState_freeview = visualisationEngine->CreateRenderState(SpecificLocalMap->scene, noDims);
 		}
 		visualisationEngine->FindVisibleBlocks(SpecificLocalMap->scene, pose, intrinsics, renderState_freeview);
 		visualisationEngine->CreateExpectedDepths(SpecificLocalMap->scene, pose, intrinsics, renderState_freeview);
