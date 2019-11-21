@@ -85,15 +85,13 @@ ITMMainEngine::ITMMainEngine(const ITMLibSettings *settings, const ITMRGBDCalib 
 
 	Vector2i trackedImageSize = ITMTrackingController::GetTrackedImageSize(settings, imgSize_rgb, imgSize_d);
 
-        SpecificLocalMap = new ITMLocalMap(settings, visualisationEngine, trackedImageSize);	
 	renderState_freeview = NULL; //will be created by the visualisation engine
 
         imuCalibrator = new ITMIMUCalibrator_iPad();
-	tracker = ITMTrackerFactory<ITMVoxel, ITMVoxelIndex>::Instance().Make(trackedImageSize, settings, lowLevelEngine, imuCalibrator, SpecificLocalMap->scene);
+	tracker = ITMTrackerFactory<ITMVoxel, ITMVoxelIndex>::Instance().Make(trackedImageSize, settings, lowLevelEngine, imuCalibrator);
 	trackingController = new ITMTrackingController(tracker, visualisationEngine, lowLevelEngine, settings);
 
 	denseMapper = new ITMDenseMapper<ITMVoxel, ITMVoxelIndex>(settings);
-	denseMapper->ResetScene(SpecificLocalMap->scene);
 	
 	mapManager = new ITMVoxelMapGraphManager(settings, visualisationEngine, denseMapper, trackedImageSize);
 	mActiveDataManger = new ITMActiveMapManager(mapManager);
@@ -153,7 +151,7 @@ ITMTrackingState* ITMMainEngine::GetTrackingState(void) const {
 
 ITMMesh* ITMMainEngine::UpdateMesh(void)
 {
-	if (mesh != NULL) meshingEngine->MeshScene(mesh, SpecificLocalMap->scene);
+	if (mesh != NULL) meshingEngine->MeshScene(mesh, GetPrimaryLocalMap()->scene);
 	return mesh;
 }
 
@@ -179,18 +177,18 @@ void ITMMainEngine::ProcessFrame(ITMUChar4Image *rgbImage, ITMShortImage *rawDep
 	if (!mainProcessingActive) return;
 
 	// tracking
-	trackingController->Track(SpecificLocalMap->trackingState, view);
+	trackingController->Track(GetPrimaryLocalMap()->trackingState, view);
 
 	// fusion
-	if (fusionActive) denseMapper->ProcessFrame(view, SpecificLocalMap->trackingState, SpecificLocalMap->scene, SpecificLocalMap->renderState);
+	if (fusionActive) denseMapper->ProcessFrame(view, GetPrimaryLocalMap()->trackingState, GetPrimaryLocalMap()->scene, GetPrimaryLocalMap()->renderState);
 
 	// raycast to renderState_live for tracking and free visualisation
-	trackingController->Prepare(SpecificLocalMap->trackingState, SpecificLocalMap->scene, view, SpecificLocalMap->renderState);
+	trackingController->Prepare(GetPrimaryLocalMap()->trackingState, GetPrimaryLocalMap()->scene, view, GetPrimaryLocalMap()->renderState);
 }
 
 Vector2i ITMMainEngine::GetImageSize(void) const
 {
-	return SpecificLocalMap->renderState->raycastImage->noDims;
+	return GetPrimaryLocalMap()->renderState->raycastImage->noDims;
 }
 
 /// @brief 将场景转换成图片进行可视化
@@ -232,7 +230,7 @@ void ITMMainEngine::GetImage(ITMUChar4Image *out, ITMFloatImage *outFloat, GetIm
 		break;
 	}
 	case ITMMainEngine::InfiniTAM_IMAGE_SCENERAYCAST:{
-		ORUtils::Image<Vector4u> *srcImage = SpecificLocalMap->renderState->raycastImage;
+		ORUtils::Image<Vector4u> *srcImage = GetPrimaryLocalMap()->renderState->raycastImage;
 		out->ChangeDims(srcImage->noDims);
 		if (settings->deviceType == ITMLibSettings::DEVICE_CUDA){
 			out->SetFrom(srcImage, ORUtils::MemoryBlock<Vector4u>::CUDA_TO_CPU);
@@ -262,11 +260,11 @@ void ITMMainEngine::GetImage(ITMUChar4Image *out, ITMFloatImage *outFloat, GetIm
 		  type = IITMVisualisationEngine::RENDER_DEPTH_MAP;
 		}
 		if (renderState_freeview == NULL) {
-		   renderState_freeview = visualisationEngine->CreateRenderState(SpecificLocalMap->scene, noDims);
+		   renderState_freeview = visualisationEngine->CreateRenderState(GetPrimaryLocalMap()->scene, noDims);
 		}
-		visualisationEngine->FindVisibleBlocks(SpecificLocalMap->scene, pose, intrinsics, renderState_freeview);
-		visualisationEngine->CreateExpectedDepths(SpecificLocalMap->scene, pose, intrinsics, renderState_freeview);
-		visualisationEngine->RenderImage(SpecificLocalMap->scene, 
+		visualisationEngine->FindVisibleBlocks(GetPrimaryLocalMap()->scene, pose, intrinsics, renderState_freeview);
+		visualisationEngine->CreateExpectedDepths(GetPrimaryLocalMap()->scene, pose, intrinsics, renderState_freeview);
+		visualisationEngine->RenderImage(GetPrimaryLocalMap()->scene, 
 						 pose, 
 						 intrinsics, 
 				                 renderState_freeview, 

@@ -75,9 +75,7 @@ namespace ITMLib
 			ITMRenderState *renderState_freeview;
 			
 			ITMActiveMapManager *mActiveDataManger;
-			
-			ITMLocalMap *SpecificLocalMap;
-			
+						
 			ITMGlobalAdjustmentEngine* mGlobalAdjustmentEngine;
 
 		public:
@@ -102,7 +100,7 @@ namespace ITMLib
 			ITMLocalMap* GetPrimaryLocalMap(void) const;
 			
 			/// Gives access to the internal world representation
-			ITMScene<ITMVoxel, ITMVoxelIndex>* GetScene(void) { return SpecificLocalMap->scene; }
+			ITMScene<ITMVoxel, ITMVoxelIndex>* GetScene(void) { return GetPrimaryLocalMap()->scene; }
 
 			/// Process a frame with rgb and depth images and optionally a corresponding imu measurement
 			void ProcessFrame(ITMUChar4Image *rgbImage, ITMShortImage *rawDepthImage, ITMIMUMeasurement *imuMeasurement = NULL);

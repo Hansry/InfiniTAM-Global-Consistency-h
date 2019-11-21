@@ -39,7 +39,7 @@ namespace ITMLib
     {
       //#################### TYPEDEFS ####################
     private:
-      typedef ITMTracker *(*Maker)(const Vector2i&,const ITMLibSettings*,const ITMLowLevelEngine*,ITMIMUCalibrator*,ITMScene<TVoxel,TIndex>*);
+      typedef ITMTracker *(*Maker)(const Vector2i&,const ITMLibSettings*,const ITMLowLevelEngine*,ITMIMUCalibrator*);
 
       //#################### PRIVATE VARIABLES ####################
     private:
@@ -55,9 +55,9 @@ namespace ITMLib
       {
         makers.insert(std::make_pair(ITMLibSettings::TRACKER_COLOR, &MakeColourTracker));
         makers.insert(std::make_pair(ITMLibSettings::TRACKER_ICP, &MakeICPTracker));
-		makers.insert(std::make_pair(ITMLibSettings::TRACKER_WICP, &MakeWeightedICPTracker));
+	makers.insert(std::make_pair(ITMLibSettings::TRACKER_WICP, &MakeWeightedICPTracker));
         makers.insert(std::make_pair(ITMLibSettings::TRACKER_IMU, &MakeIMUTracker));
-        makers.insert(std::make_pair(ITMLibSettings::TRACKER_REN, &MakeRenTracker));
+//         makers.insert(std::make_pair(ITMLibSettings::TRACKER_REN, &MakeRenTracker));
       }
 
     public:
@@ -76,13 +76,13 @@ namespace ITMLib
        * \brief Makes a tracker of the type specified in the settings.
        */
       ITMTracker *Make(const Vector2i& trackedImageSize, const ITMLibSettings *settings, const ITMLowLevelEngine *lowLevelEngine,
-                       ITMIMUCalibrator *imuCalibrator, ITMScene<TVoxel,TIndex> *scene) const
+                       ITMIMUCalibrator *imuCalibrator) const
       {
         typename std::map<ITMLibSettings::TrackerType,Maker>::const_iterator it = makers.find(settings->trackerType);
         if(it == makers.end()) DIEWITHEXCEPTION("Unknown tracker type");
 
         Maker maker = it->second;
-        return (*maker)(trackedImageSize, settings, lowLevelEngine, imuCalibrator, scene);
+        return (*maker)(trackedImageSize, settings, lowLevelEngine, imuCalibrator);
       }
 
       //#################### PUBLIC STATIC MEMBER FUNCTIONS ####################
@@ -91,7 +91,7 @@ namespace ITMLib
        * \brief Makes a colour tracker.
        */
       static ITMTracker *MakeColourTracker(const Vector2i& trackedImageSize, const ITMLibSettings *settings, const ITMLowLevelEngine *lowLevelEngine,
-                                           ITMIMUCalibrator *imuCalibrator, ITMScene<TVoxel,TIndex> *scene)
+                                           ITMIMUCalibrator *imuCalibrator)
       {
         switch(settings->deviceType)
         {
@@ -125,7 +125,7 @@ namespace ITMLib
        * \brief Makes an ICP tracker.
        */
       static ITMTracker *MakeICPTracker(const Vector2i& trackedImageSize, const ITMLibSettings *settings, const ITMLowLevelEngine *lowLevelEngine,
-                                        ITMIMUCalibrator *imuCalibrator, ITMScene<TVoxel,TIndex> *scene)
+                                        ITMIMUCalibrator *imuCalibrator)
       {
         switch(settings->deviceType)
         {
@@ -182,7 +182,7 @@ namespace ITMLib
 	  * \brief Makes an WICP tracker.
 	  */
 	  static ITMTracker *MakeWeightedICPTracker(const Vector2i& trackedImageSize, const ITMLibSettings *settings, const ITMLowLevelEngine *lowLevelEngine,
-		  ITMIMUCalibrator *imuCalibrator, ITMScene<TVoxel, TIndex> *scene)
+		  ITMIMUCalibrator *imuCalibrator)
 	  {
 		  switch (settings->deviceType)
 		  {
@@ -240,7 +240,7 @@ namespace ITMLib
        * \brief Makes an IMU tracker.
        */
       static ITMTracker *MakeIMUTracker(const Vector2i& trackedImageSize, const ITMLibSettings *settings, const ITMLowLevelEngine *lowLevelEngine,
-                                        ITMIMUCalibrator *imuCalibrator, ITMScene<TVoxel,TIndex> *scene)
+                                        ITMIMUCalibrator *imuCalibrator)
       {
         switch(settings->deviceType)
         {
@@ -309,55 +309,57 @@ namespace ITMLib
         DIEWITHEXCEPTION("Failed to make IMU tracker");
       }
 
-      /**
-       * \brief Makes a Ren tracker.
-       */
-      static ITMTracker *MakeRenTracker(const Vector2i& trackedImageSize, const ITMLibSettings *settings, const ITMLowLevelEngine *lowLevelEngine,
-                                        ITMIMUCalibrator *imuCalibrator, ITMScene<TVoxel,TIndex> *scene)
-      {
-        switch(settings->deviceType)
-        {
-          case ITMLibSettings::DEVICE_CPU:
-          {
-            return new ITMRenTracker_CPU<TVoxel, TIndex>(
-              trackedImageSize,
-              settings->trackingRegime,
-              2,
-              lowLevelEngine, scene
-            );
-          }
-          case ITMLibSettings::DEVICE_CUDA:
-          {
-#ifndef COMPILE_WITHOUT_CUDA
-            return new ITMRenTracker_CUDA<TVoxel, TIndex>(
-              trackedImageSize,
-              settings->trackingRegime,
-              2,
-              lowLevelEngine,
-              scene
-            );
-#else
-            break;
-#endif
-          }
-          case ITMLibSettings::DEVICE_METAL:
-          {
-#ifdef COMPILE_WITH_METAL
-            return new ITMRenTracker_CPU<TVoxel, TIndex>(
-              trackedImageSize,
-              settings->trackingRegime,
-              2,
-              lowLevelEngine, scene
-            );
-#else
-            break;
-#endif
-          }
-          default: break;
-        }
-
-        DIEWITHEXCEPTION("Failed to make Ren tracker");
-      }
+//       /**
+//        * \brief Makes a Ren tracker.
+//        */
+//       static ITMTracker *MakeRenTracker(const Vector2i& trackedImageSize, const ITMLibSettings *settings, const ITMLowLevelEngine *lowLevelEngine,
+//                                         ITMIMUCalibrator *imuCalibrator, ITMScene<TVoxel,TIndex> *scene)
+//       {
+//         switch(settings->deviceType)
+//         {
+//           case ITMLibSettings::DEVICE_CPU:
+//           {
+//             return new ITMRenTracker_CPU<TVoxel, TIndex>(
+//               trackedImageSize,
+//               settings->trackingRegime,
+//               2,
+//               lowLevelEngine, 
+// 	      scene
+//             );
+//           }
+//           case ITMLibSettings::DEVICE_CUDA:
+//           {
+// #ifndef COMPILE_WITHOUT_CUDA
+//             return new ITMRenTracker_CUDA<TVoxel, TIndex>(
+//               trackedImageSize,
+//               settings->trackingRegime,
+//               2,
+//               lowLevelEngine,
+//               scene
+//             );
+// #else
+//             break;
+// #endif
+//           }
+//           case ITMLibSettings::DEVICE_METAL:
+//           {
+// #ifdef COMPILE_WITH_METAL
+//             return new ITMRenTracker_CPU<TVoxel, TIndex>(
+//               trackedImageSize,
+//               settings->trackingRegime,
+//               2,
+//               lowLevelEngine, 
+// 	      scene
+//             );
+// #else
+//             break;
+// #endif
+//           }
+//           default: break;
+//         }
+// 
+//         DIEWITHEXCEPTION("Failed to make Ren tracker");
+//       }
     };
   }
 }
