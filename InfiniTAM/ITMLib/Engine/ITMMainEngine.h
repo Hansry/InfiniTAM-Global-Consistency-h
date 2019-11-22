@@ -74,7 +74,8 @@ namespace ITMLib
 			
 			ITMRenderState *renderState_freeview;
 			
-			ITMActiveMapManager *mActiveDataManger;
+			///先将活跃地图管理器置为空
+			ITMActiveMapManager *mActiveDataManger = nullptr;
 						
 			ITMGlobalAdjustmentEngine* mGlobalAdjustmentEngine;
 
@@ -117,7 +118,7 @@ namespace ITMLib
 			/// Get a result image as output
 			Vector2i GetImageSize(void) const;
 
-			void GetImage(ITMUChar4Image *out, ITMFloatImage *outFloat, GetImageType getImageType, ITMPose *pose = NULL, ITMIntrinsics *intrinsics = NULL);
+			void GetImage(ITMUChar4Image *out, ITMFloatImage *outFloat, GetImageType getImageType, ITMPose *pose = NULL, ITMIntrinsics *intrinsics = NULL, const ITMLocalMap* currentLocalMap = NULL);
 
 			/// switch for turning intergration on/off
 			void turnOnIntegration();

@@ -94,10 +94,10 @@ ITMMainEngine::ITMMainEngine(const ITMLibSettings *settings, const ITMRGBDCalib 
 	denseMapper = new ITMDenseMapper<ITMVoxel, ITMVoxelIndex>(settings);
 	
 	mapManager = new ITMVoxelMapGraphManager(settings, visualisationEngine, denseMapper, trackedImageSize);
-	mActiveDataManger = new ITMActiveMapManager(mapManager);
+// 	mActiveDataManger = new ITMActiveMapManager(mapManager);
 	
 	///初始化的时候将创建的LocalMap设为PrimaryLocalMap
-	mActiveDataManger->initiateNewLocalMap(true);
+// 	mActiveDataManger->initiateNewLocalMap(true);
 	mGlobalAdjustmentEngine = new ITMGlobalAdjustmentEngine();
 	if(separateThreadGlobalAdjustment){
 	  mGlobalAdjustmentEngine->startSeparateThread();
@@ -192,7 +192,7 @@ Vector2i ITMMainEngine::GetImageSize(void) const
 }
 
 /// @brief 将场景转换成图片进行可视化
-void ITMMainEngine::GetImage(ITMUChar4Image *out, ITMFloatImage *outFloat, GetImageType getImageType, ITMPose *pose, ITMIntrinsics *intrinsics)
+void ITMMainEngine::GetImage(ITMUChar4Image *out, ITMFloatImage *outFloat, GetImageType getImageType, ITMPose *pose, ITMIntrinsics *intrinsics, const ITMLocalMap* currentLocalMap)
 {
 	if (view == NULL) return;
     
@@ -230,7 +230,7 @@ void ITMMainEngine::GetImage(ITMUChar4Image *out, ITMFloatImage *outFloat, GetIm
 		break;
 	}
 	case ITMMainEngine::InfiniTAM_IMAGE_SCENERAYCAST:{
-		ORUtils::Image<Vector4u> *srcImage = GetPrimaryLocalMap()->renderState->raycastImage;
+		ORUtils::Image<Vector4u> *srcImage = currentLocalMap->renderState->raycastImage;
 		out->ChangeDims(srcImage->noDims);
 		if (settings->deviceType == ITMLibSettings::DEVICE_CUDA){
 			out->SetFrom(srcImage, ORUtils::MemoryBlock<Vector4u>::CUDA_TO_CPU);
@@ -260,11 +260,11 @@ void ITMMainEngine::GetImage(ITMUChar4Image *out, ITMFloatImage *outFloat, GetIm
 		  type = IITMVisualisationEngine::RENDER_DEPTH_MAP;
 		}
 		if (renderState_freeview == NULL) {
-		   renderState_freeview = visualisationEngine->CreateRenderState(GetPrimaryLocalMap()->scene, noDims);
+		   renderState_freeview = visualisationEngine->CreateRenderState(currentLocalMap->scene, noDims);
 		}
-		visualisationEngine->FindVisibleBlocks(GetPrimaryLocalMap()->scene, pose, intrinsics, renderState_freeview);
-		visualisationEngine->CreateExpectedDepths(GetPrimaryLocalMap()->scene, pose, intrinsics, renderState_freeview);
-		visualisationEngine->RenderImage(GetPrimaryLocalMap()->scene, 
+		visualisationEngine->FindVisibleBlocks(currentLocalMap->scene, pose, intrinsics, renderState_freeview);
+		visualisationEngine->CreateExpectedDepths(currentLocalMap->scene, pose, intrinsics, renderState_freeview);
+		visualisationEngine->RenderImage(currentLocalMap->scene, 
 						 pose, 
 						 intrinsics, 
 				                 renderState_freeview, 
