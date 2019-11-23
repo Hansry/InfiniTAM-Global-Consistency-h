@@ -33,6 +33,9 @@ __global__ void projectAndSplitBlocksHHash_device(const ITMHHashEntry *hashEntri
 __global__ void fillBlocks_device(const uint *noTotalBlocks, const RenderingBlock *renderingBlocks,
 	Vector2i imgSize, Vector2f *minmaxData);
 
+__global__ void countVisibleBlocks_device(const int *visibleEntryIDs, int noVisibleEntries, 
+	const ITMHashEntry *hashTable, uint *noBlocks, int minBlockId, int maxBlockId);
+
 __global__ void findMissingPoints_device(int *fwdProjMissingPoints, uint *noMissingPoints, const Vector2f *minmaximg,
 	Vector4f *forwardProjection, float *currentDepth, Vector2i imgSize);
 
@@ -73,6 +76,7 @@ __global__ void renderColour_device(Vector4u *outRendering, const Vector4f *ptsR
 template<class TVoxel, class TIndex>
 __global__ void renderColourcoded_device(Vector4u *outRendering, const Vector4f *ptsRay, const TVoxel *voxelData,
 	const typename TIndex::IndexData *voxelIndex, Vector2i imgSize, Vector3f lightSource);
+
 
 
 /// \brief Renders a depth map using ray casting.
@@ -170,6 +174,29 @@ void ITMVisualisationEngine_CUDA<TVoxel, ITMVoxelBlockHash>::FindVisibleBlocks(c
 			}*/
 
 	ITMSafeCall(cudaMemcpy(&renderState_vh->noVisibleEntries, noVisibleEntries_device, sizeof(int), cudaMemcpyDeviceToHost));
+}
+
+template<class TVoxel>
+int ITMVisualisationEngine_CUDA<TVoxel, ITMVoxelBlockHash>::CountVisibleBlocks(const ITMScene<TVoxel,ITMVoxelBlockHash> *scene, const ITMRenderState *renderState, int minBlockId, int maxBlockId) const
+{
+	const ITMRenderState_VH *renderState_vh = (const ITMRenderState_VH*)renderState;
+
+	int noVisibleEntries = renderState_vh->noVisibleEntries;
+	const int *visibleEntryIDs_device = renderState_vh->GetVisibleEntryIDs();
+
+	ORcudaSafeCall(cudaMemset(noTotalBlocks_device, 0, sizeof(uint)));
+
+	dim3 blockSize(256);
+	dim3 gridSize((int)ceil((float)noVisibleEntries / (float)blockSize.x));
+
+	const ITMHashEntry *hashTable_device = scene->index.GetEntries();
+	countVisibleBlocks_device<<<gridSize,blockSize>>>(visibleEntryIDs_device, noVisibleEntries, hashTable_device, noTotalBlocks_device, minBlockId, maxBlockId);
+// 	ORcudaKernelCheck;
+
+	uint noTotalBlocks;
+	ORcudaSafeCall(cudaMemcpy(&noTotalBlocks, noTotalBlocks_device, sizeof(uint), cudaMemcpyDeviceToHost));
+
+	return noTotalBlocks;
 }
 
 template<class TVoxel, class TIndex>
@@ -724,6 +751,17 @@ __global__ void fillBlocks_device(const uint *noTotalBlocks, const RenderingBloc
 	Vector2f & pixel(minmaxData[xpos + ypos*imgSize.x]);
 	atomicMin(&pixel.x, b.zRange.x); atomicMax(&pixel.y, b.zRange.y);
 }
+
+__global__ void countVisibleBlocks_device(const int* visibleEntryIDs, int noVisibleEntries, const ITMHashEntry* hashTable, uint* noBlocks, int minBlockId, int maxBlockId)
+{ 
+     int globalIdx = threadIdx.x + blockIdx.x * blockDim.x;
+     if (globalIdx >= noVisibleEntries) return;
+
+     int entryId = visibleEntryIDs[globalIdx];
+     int blockId = hashTable[entryId].ptr;
+     if ((blockId >= minBlockId) && (blockId <= maxBlockId)) atomicAdd(noBlocks, 1);
+}
+
 
 __global__ void findMissingPoints_device(int *fwdProjMissingPoints, uint *noMissingPoints, const Vector2f *minmaximg,
 	Vector4f *forwardProjection, float *currentDepth, Vector2i imgSize)

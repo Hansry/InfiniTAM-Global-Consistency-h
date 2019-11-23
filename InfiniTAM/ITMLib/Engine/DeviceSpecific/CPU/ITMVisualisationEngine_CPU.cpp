@@ -77,6 +77,25 @@ void ITMVisualisationEngine_CPU<TVoxel,ITMVoxelBlockHash>::FindVisibleBlocks(con
 	renderState_vh->noVisibleEntries = noVisibleEntries;
 }
 
+///@brief 统计minBlockId和maxBLockId之间可见的voxel block的个数
+template<class TVoxel>
+int ITMVisualisationEngine_CPU<TVoxel, ITMVoxelBlockHash>::CountVisibleBlocks(const ITMScene<TVoxel,ITMVoxelBlockHash> *scene, const ITMRenderState *renderState, int minBlockId, int maxBlockId) const
+{
+	const ITMRenderState_VH *renderState_vh = (const ITMRenderState_VH*)renderState;
+
+	int noVisibleEntries = renderState_vh->noVisibleEntries;
+	const int *visibleEntryIDs = renderState_vh->GetVisibleEntryIDs();
+
+	int ret = 0;
+	for (int i = 0; i < noVisibleEntries; ++i) {
+	        //visibleEntryIDs[i]为可见性的voxelblock在hashTable（通过scene->index.GetEntries()得到）中的序号,ptr为该voxel block在VBA的位置
+		int blockID = scene->index.GetEntries()[visibleEntryIDs[i]].ptr;
+		if ((blockID >= minBlockId)&&(blockID <= maxBlockId)) ++ret;
+	}
+
+	return ret;
+}
+
 template<class TVoxel, class TIndex>
 void ITMVisualisationEngine_CPU<TVoxel, TIndex>::CreateExpectedDepths(const ITMScene<TVoxel, TIndex> *scene, const ITMPose *pose, const ITMIntrinsics *intrinsics, ITMRenderState *renderState) const
 {
