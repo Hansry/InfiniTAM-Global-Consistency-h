@@ -44,6 +44,8 @@ void ITMSceneReconstructionEngine_CPU<TVoxel,ITMVoxelBlockHash>::ResetScene(ITMS
 	scene->index.SetLastFreeExcessListId(SDF_EXCESS_LIST_SIZE - 1);
 }
 
+
+/// @brief 通过融合给定视角的深度和颜色信息来更新voxel blocks
 template<class TVoxel>
 void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::IntegrateIntoScene(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, const ITMView *view,
 	const ITMTrackingState *trackingState, const ITMRenderState *renderState)
@@ -57,9 +59,13 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::IntegrateIntoS
 
 	ITMRenderState_VH *renderState_vh = (ITMRenderState_VH*)renderState;
 
+        //M_d为当前帧坐标系到世界坐标系下的变换矩阵Tcw,即深度图片的坐标系到世界坐标系下的变换矩阵Td,w
 	M_d = trackingState->pose_d->GetM();
-	if (TVoxel::hasColorInformation) M_rgb = view->calib->trafo_rgb_to_depth.calib_inv * M_d;
-
+	if (TVoxel::hasColorInformation) {
+	  //Note that:calib.trafo_rgb_to_depth指的是将RGB坐标系下的空间点转到Depth坐标系下，从坐标系转换角度来看，应该是Tdepth->rgb,即Depth坐标系到RGB坐标系的变换
+	  //即calib.trafo_rgb_to_depth.calib_inv = Trgb,d (这里指坐标系的变换),因此Trgb,w = Trgb,d * Td,w
+	  M_rgb = view->calib->trafo_rgb_to_depth.calib_inv * M_d;
+	}
 	projParams_d = view->calib->intrinsics_d.projectionParamsSimple.all;
 	projParams_rgb = view->calib->intrinsics_rgb.projectionParamsSimple.all;
 
@@ -83,12 +89,16 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::IntegrateIntoS
 	{
 		Vector3i globalPos;
 		const ITMHashEntry &currentHashEntry = hashTable[visibleEntryIds[entryId]];
-
+		
+		//identifies an actual allocated entry in the voxel block array (hansry)
 		if (currentHashEntry.ptr < 0) continue;
 
+		//其中currentHashEntry.pos存储的xyz是以voxel block为计量单位，而不是m
 		globalPos.x = currentHashEntry.pos.x;
 		globalPos.y = currentHashEntry.pos.y;
 		globalPos.z = currentHashEntry.pos.z;
+		
+		//乘上SDF_BLOCK_SIZE后将以voxel block为计量单位转换成以voxel为计量单位
 		globalPos *= SDF_BLOCK_SIZE;
 
 		TVoxel *localVoxelBlock = &(localVBA[currentHashEntry.ptr * (SDF_BLOCK_SIZE3)]);
@@ -96,12 +106,14 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::IntegrateIntoS
 		for (int z = 0; z < SDF_BLOCK_SIZE; z++) for (int y = 0; y < SDF_BLOCK_SIZE; y++) for (int x = 0; x < SDF_BLOCK_SIZE; x++)
 		{
 			Vector4f pt_model; int locId;
-
+			
+                        //一个voxel block中存储了8x8x8个voxels，需要找到他们的locId
 			locId = x + y * SDF_BLOCK_SIZE + z * SDF_BLOCK_SIZE * SDF_BLOCK_SIZE;
 
 			if (stopIntegratingAtMaxW) if (localVoxelBlock[locId].w_depth == maxW) continue;
 			//if (approximateIntegration) if (localVoxelBlock[locId].w_depth != 0) continue;
 
+			//乘上voxelSize之后将globalPose以voxel为计量单位转成了pt_model以m为计量单位
 			pt_model.x = (float)(globalPos.x + x) * voxelSize;
 			pt_model.y = (float)(globalPos.y + y) * voxelSize;
 			pt_model.z = (float)(globalPos.z + z) * voxelSize;
@@ -113,11 +125,14 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::IntegrateIntoS
 	}
 }
 
+/// @brief 根据当前视角的深度图转成空间中的voxel block后，判断voxel block是否已经在voxelAllocationList或者excessAllocationList分配，
+///        若已经分配，则更改其状态为当前可见，若还未分配，则进行分配。
 template<class TVoxel>
 void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::AllocateSceneFromDepth(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, const ITMView *view,
 	const ITMTrackingState *trackingState, const ITMRenderState *renderState, bool onlyUpdateVisibleList)
 {
 	Vector2i depthImgSize = view->depth->noDims;
+	//场景体素的大小
 	float voxelSize = scene->sceneParams->voxelSize;
 
 	Matrix4f M_d, invM_d;
@@ -125,7 +140,10 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::AllocateSceneF
 
 	ITMRenderState_VH *renderState_vh = (ITMRenderState_VH*)renderState;
 
-	M_d = trackingState->pose_d->GetM(); M_d.inv(invM_d);
+	//invM_d为世界坐标系到当前帧坐标系的变换矩阵Twc (其中w为给定的子地图)
+	//M_d为当前帧坐标系到世界坐标系下的变换矩阵Tcw
+	M_d = trackingState->pose_d->GetM(); 
+	M_d.inv(invM_d);
 
 	projParams_d = view->calib->intrinsics_d.projectionParamsSimple.all;
 	invProjParams_d = projParams_d;
@@ -137,6 +155,8 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::AllocateSceneF
 	float *depth = view->depth->GetData(MEMORYDEVICE_CPU);
 	int *voxelAllocationList = scene->localVBA.GetAllocationList();
 	int *excessAllocationList = scene->index.GetExcessAllocationList();
+	
+	//返回的是存储hash entry的列表
 	ITMHashEntry *hashTable = scene->index.GetEntries();
 	ITMHashSwapState *swapStates = scene->useSwapping ? scene->globalCache->GetSwapStates(false) : 0;
 	int *visibleEntryIDs = renderState_vh->GetVisibleEntryIDs();
@@ -147,6 +167,7 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::AllocateSceneF
 
 	bool useSwapping = scene->useSwapping;
 
+	//1.0m下有多少个blocks
 	float oneOverVoxelSize = 1.0f / (voxelSize * SDF_BLOCK_SIZE);
 
 	int lastFreeVoxelBlockId = scene->localVBA.lastFreeBlockId;
@@ -214,10 +235,14 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::AllocateSceneF
 
 					int exlOffset = excessAllocationList[exlIdx];
 
+					//由于通过hash function对voxel block的位置计算得到的hash entry已经被占用，这时候需要添加offerset以找到excess list对应的地方进行存储
+					//需要强调下，offset的基准是SDF_BUCKET_NUM,即hashIdx = SDF_BUCKET_NUM + hashEntry.offset - 1
 					hashTable[targetIdx].offset = exlOffset + 1; //connect to child
 
+					//在excess list进行hash Entry的存储 
 					hashTable[SDF_BUCKET_NUM + exlOffset] = hashEntry; //add child to the excess list
 
+					//设置为可见
 					entriesVisibleType[SDF_BUCKET_NUM + exlOffset] = 1; //make child visible and in memory
 				}
 
@@ -232,6 +257,7 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::AllocateSceneF
 		unsigned char hashVisibleType = entriesVisibleType[targetIdx];
 		const ITMHashEntry &hashEntry = hashTable[targetIdx];
 		
+		//hashVisibleType == 3是上一帧可见的标记,判断上一帧可见的voxel block在当前视角下是否依旧可见
 		if (hashVisibleType == 3)
 		{
 			bool isVisibleEnlarged, isVisible;
@@ -239,21 +265,33 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::AllocateSceneF
 			if (useSwapping)
 			{
 				checkBlockVisibility<true>(isVisible, isVisibleEnlarged, hashEntry.pos, M_d, projParams_d, voxelSize, depthImgSize);
-				if (!isVisibleEnlarged) hashVisibleType = 0;
+				if (!isVisibleEnlarged) {
+				  hashVisibleType = 0;
+				}
 			} else {
 				checkBlockVisibility<false>(isVisible, isVisibleEnlarged, hashEntry.pos, M_d, projParams_d, voxelSize, depthImgSize);
-				if (!isVisible) { hashVisibleType = 0; }
+				if (!isVisible) { 
+				  hashVisibleType = 0; 
+				}
 			}
 			entriesVisibleType[targetIdx] = hashVisibleType;
 		}
 
 		if (useSwapping)
 		{
-			if (hashVisibleType > 0 && swapStates[targetIdx].state != 2) swapStates[targetIdx].state = 1;
+		/* 
+		  swapStates: 
+		  0 - most recent data is on host, data not currently in active memory
+	          1 - data both on host and in active memory, information has not yet been combined
+		  2 - most recent data is in active memory, should save this data back to host at some point
+		*/
+		//如果当前voxel block可见，则将其状态设为“该数据存在于host和activate memory,等待融合"
+		   if (hashVisibleType > 0 && swapStates[targetIdx].state != 2) swapStates[targetIdx].state = 1;
 		}
 
 		if (hashVisibleType > 0)
 		{	
+		        //visibleEntryIDs存储了所有可见的hash entry的索引
 			visibleEntryIDs[noVisibleEntries] = targetIdx;
 			noVisibleEntries++;
 		}
@@ -276,10 +314,14 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::AllocateSceneF
 			int vbaIdx;
 			ITMHashEntry hashEntry = hashTable[targetIdx];
 
+			//hash entry可见同时且被标记为swapped out (has been removed)，需要将其swapped in?
 			if (entriesVisibleType[targetIdx] > 0 && hashEntry.ptr == -1) 
 			{
-				vbaIdx = lastFreeVoxelBlockId; lastFreeVoxelBlockId--;
-				if (vbaIdx >= 0) hashTable[targetIdx].ptr = voxelAllocationList[vbaIdx];
+				vbaIdx = lastFreeVoxelBlockId; 
+				lastFreeVoxelBlockId--;
+				if (vbaIdx >= 0) {
+				  hashTable[targetIdx].ptr = voxelAllocationList[vbaIdx];
+				}
 			}
 		}
 	}
@@ -332,6 +374,7 @@ void ITMSceneReconstructionEngine_CPU<TVoxel,ITMVoxelBlockHHash>::ResetScene(ITM
 	for (int i = 0; i < SDF_HASH_NO_H_LEVELS; i++) scene->index.SetLastFreeExcessListId(i, SDF_EXCESS_LIST_SIZE - 1);
 }
 
+/// @brief 通过融合给定视角的深度和颜色信息来更新voxel blocks
 template<class TVoxel>
 void ITMSceneReconstructionEngine_CPU<TVoxel,ITMVoxelBlockHHash>::IntegrateIntoScene(ITMScene<TVoxel,ITMVoxelBlockHHash> *scene, const ITMView *view, const ITMTrackingState *trackingState, const ITMRenderState *renderState)
 {
@@ -345,8 +388,9 @@ void ITMSceneReconstructionEngine_CPU<TVoxel,ITMVoxelBlockHHash>::IntegrateIntoS
 	ITMRenderState_VH *renderState_vh = (ITMRenderState_VH*)renderState;
 
 	M_d = trackingState->pose_d->GetM();
-	if (TVoxel::hasColorInformation) M_rgb = view->calib->trafo_rgb_to_depth.calib_inv * M_d;
-
+	if (TVoxel::hasColorInformation) {
+	  M_rgb = view->calib->trafo_rgb_to_depth.calib_inv * M_d;
+	}
 	projParams_d = view->calib->intrinsics_d.projectionParamsSimple.all;
 	projParams_rgb = view->calib->intrinsics_rgb.projectionParamsSimple.all;
 
@@ -533,17 +577,29 @@ void ITMSceneReconstructionEngine_CPU<TVoxel,ITMVoxelBlockHHash>::AllocateSceneF
 			if (useSwapping && hashVisibleType == 2)
 			{
 				checkBlockVisibility<true>(isVisible, isVisibleEnlarged, hashEntry.pos, M_d, projParams_d, voxelSize, depthImgSize);
-				entriesVisibleType[targetIdx] = isVisibleEnlarged; hashVisibleType = isVisibleEnlarged;
+				entriesVisibleType[targetIdx] = isVisibleEnlarged; 
+				hashVisibleType = isVisibleEnlarged;
 			}
 		}
 
 		if (useSwapping)
 		{
-			if (entriesVisibleType[targetIdx] > 0 && swapStates[targetIdx].state != 2) swapStates[targetIdx].state = 1;
+		 /* 
+		 swapStates: 
+		 0 - most recent data is on host, data not currently in active memory
+	         1 - data both on host and in active memory, information has not yet been combined
+		 2 - most recent data is in active memory, should save this data back to host at some point
+		*/
+		    
+		     //如果当前voxel block可见，则将其状态设为“该数据存在于host和activate memory,等待融合"
+		     if (entriesVisibleType[targetIdx] > 0 && swapStates[targetIdx].state != 2) {
+			 swapStates[targetIdx].state = 1;
+		     }
 		}
 
 		if (hashVisibleType > 0)
 		{
+		        //visibleEntryIDs存储了所有可见的hash entry的索引
 			visibleEntryIDs[noVisibleEntries] = targetIdx;
 			noVisibleEntries++;
 		}
@@ -561,6 +617,7 @@ void ITMSceneReconstructionEngine_CPU<TVoxel,ITMVoxelBlockHHash>::AllocateSceneF
 	//reallocate deleted ones from previous swap operation
 	if (useSwapping)
 	{
+	        //hash entry可见同时且被标记为swapped out (has been removed)，需要将其swapped in?
 		for (int targetIdx = 0; targetIdx < noTotalEntries; targetIdx++)
 		{
 			int vbaIdx;
@@ -568,8 +625,11 @@ void ITMSceneReconstructionEngine_CPU<TVoxel,ITMVoxelBlockHHash>::AllocateSceneF
 
 			if (entriesVisibleType[targetIdx] > 0 && hashEntry.ptr == -1) 
 			{
-				vbaIdx = lastFreeVoxelBlockId; lastFreeVoxelBlockId--;
-				if (vbaIdx >= 0) hashTable[targetIdx].ptr = voxelAllocationList[vbaIdx];
+				vbaIdx = lastFreeVoxelBlockId; 
+				lastFreeVoxelBlockId--;
+				if (vbaIdx >= 0) {
+				   hashTable[targetIdx].ptr = voxelAllocationList[vbaIdx];
+				}	  
 			}
 		}
 	}

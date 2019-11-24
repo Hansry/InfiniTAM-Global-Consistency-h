@@ -100,8 +100,9 @@ namespace ITMLib
 	/// @brief id为localMapId的局部地图的大小
 	int ITMVoxelMapGraphManager::getLocalMapSize(int localMapId) const
 	{
-		if ((localMapId < 0) || ((unsigned)localMapId >= allData.size())) return -1;
+// 		if ((localMapId < 0) || ((unsigned)localMapId >= allData.size())) return -1;
 
+	        if (localMapId < 0) return -1;
 		ITMScene<ITMVoxel, ITMVoxelIndex> *scene = allData[localMapId]->scene;
 		return scene->index.getNumAllocatedVoxelBlocks() - scene->localVBA.lastFreeBlockId - 1;
 	}
@@ -109,7 +110,9 @@ namespace ITMLib
 	/// @brief 返回该局部地图在minBlockId和maxBlockId之间可见的block数量
 	int ITMVoxelMapGraphManager::countVisibleBlocks(int localMapId, int minBlockId, int maxBlockId, bool invertIds) const
 	{
-		if ((localMapId < 0) || ((unsigned)localMapId >= allData.size())) return -1;
+// 		if ((localMapId < 0) || ((unsigned)localMapId >= allData.size())) return -1;
+		
+		if (localMapId<0) return -1;
 		const ITMLocalMap *localMap = allData[localMapId];
 
 		if (invertIds) 

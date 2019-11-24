@@ -31,7 +31,7 @@ ITMLibSettings::ITMLibSettings(void)
 	//deviceType = DEVICE_CPU;
 
 	/// enables or disables swapping. HERE BE DRAGONS: It should work, but requires more testing
-	useSwapping = false;
+	useSwapping = true;
 
 	/// enables or disables approximate raycast
 	useApproximateRaycast = false;
