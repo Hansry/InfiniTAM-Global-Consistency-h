@@ -16,6 +16,9 @@ __global__ void integrateOldIntoActiveData_device(TVoxel *localVBA, ITMHashSwapS
 __global__ void buildListToSwapOut_device(int *neededEntryIDs, int *noNeededEntries, ITMHashSwapState *swapStates,
 	ITMHashEntry *hashTable, uchar *entriesVisibleType, int noTotalEntries);
 
+__global__ void buildListToSwapOut_device(int *neededEntryIDs, int *noNeededEntries, ITMHashSwapState *swapStates,
+	ITMHashEntry *hashTable, int noTotalEntries);
+
 template<class TVoxel>
 __global__ void cleanMemory_device(int *voxelAllocationList, int *noAllocatedVoxelEntries, ITMHashSwapState *swapStates,
 	ITMHashEntry *hashTable, TVoxel *localVBA, int *neededEntryIDs_local, int noNeededEntries);
@@ -117,6 +120,72 @@ void ITMSwappingEngine_CUDA<TVoxel, ITMVoxelBlockHash>::IntegrateGlobalIntoLocal
 }
 
 template<class TVoxel>
+void ITMSwappingEngine_CUDA<TVoxel, ITMVoxelBlockHash>::SaveToGlobalMemory(ITMScene<TVoxel,ITMVoxelBlockHash> *scene){
+  ITMGlobalCache<TVoxel> *globalCache = scene->globalCache;
+  ITMHashSwapState *swapStates = globalCache->GetSwapStates(true);
+  ITMHashEntry *hashTable  = scene->index.GetEntries();
+  
+  TVoxel *syncedVoxelBlocks_local = globalCache->GetSyncedVoxelBlocks(true);
+  bool *hasSyncedData_local = globalCache->GetHasSyncedData(true);
+  int *neededEntryIDs_local = globalCache->GetNeededEntryIDs(true);
+  
+  TVoxel *syncedVoxelBlocks_global = globalCache->GetSyncedVoxelBlocks(false);
+  bool *hasSyncedData_global = globalCache->GetHasSyncedData(false);
+  int *neededEntryIDs_global = globalCache->GetNeededEntryIDs(false);
+  
+  TVoxel *localVBA = scene->localVBA.GetVoxelBlocks();
+  int *voxelAllocationList = scene->localVBA.GetAllocationList();
+
+  int noTotalEntries = globalCache->noTotalEntries;
+  dim3 blockSize, gridSize;
+  int noNeededEntries;
+  
+  {
+	blockSize = dim3(256);
+	gridSize = dim3((int)ceil((float)scene->index.noTotalEntries / (float)blockSize.x));
+	ITMSafeCall(cudaMemset(noNeededEntries_device, 0, sizeof(int)));
+	buildListToSwapOut_device << <gridSize, blockSize >> >(neededEntryIDs_local, noNeededEntries_device, swapStates,
+							       hashTable, noTotalEntries);
+	ITMSafeCall(cudaMemcpy(&noNeededEntries, noNeededEntries_device, sizeof(int), cudaMemcpyDeviceToHost));
+  }
+  if(noNeededEntries>0){
+        noNeededEntries = MIN(noNeededEntries, SDF_TRANSFER_BLOCK_NUM);
+	{
+		blockSize = dim3(SDF_BLOCK_SIZE, SDF_BLOCK_SIZE, SDF_BLOCK_SIZE);
+		gridSize = dim3(noNeededEntries);
+
+		moveActiveDataToTransferBuffer_device << <gridSize, blockSize >> >(syncedVoxelBlocks_local, hasSyncedData_local,
+				neededEntryIDs_local, hashTable, localVBA);
+	}
+	{
+		blockSize = dim3(256);
+		gridSize = dim3((int)ceil((float)noNeededEntries / (float)blockSize.x));
+
+		ITMSafeCall(cudaMemcpy(noAllocatedVoxelEntries_device, &scene->localVBA.lastFreeBlockId, sizeof(int), cudaMemcpyHostToDevice));
+
+		cleanMemory_device << <gridSize, blockSize >> >(voxelAllocationList, noAllocatedVoxelEntries_device, swapStates, hashTable, localVBA,
+				neededEntryIDs_local, noNeededEntries);
+
+		ITMSafeCall(cudaMemcpy(&scene->localVBA.lastFreeBlockId, noAllocatedVoxelEntries_device, sizeof(int), cudaMemcpyDeviceToHost));
+		scene->localVBA.lastFreeBlockId = MAX(scene->localVBA.lastFreeBlockId, 0);
+		scene->localVBA.lastFreeBlockId = MIN(scene->localVBA.lastFreeBlockId, SDF_LOCAL_BLOCK_NUM);
+	}
+
+	ITMSafeCall(cudaMemcpy(neededEntryIDs_global, neededEntryIDs_local, sizeof(int) * noNeededEntries, cudaMemcpyDeviceToHost));
+	ITMSafeCall(cudaMemcpy(hasSyncedData_global, hasSyncedData_local, sizeof(bool) * noNeededEntries, cudaMemcpyDeviceToHost));
+	ITMSafeCall(cudaMemcpy(syncedVoxelBlocks_global, syncedVoxelBlocks_local, sizeof(TVoxel) *SDF_BLOCK_SIZE3 * noNeededEntries, cudaMemcpyDeviceToHost));
+
+	for (int entryId = 0; entryId < noNeededEntries; entryId++)
+	{
+		if (hasSyncedData_global[entryId]){
+			globalCache->SetStoredData(neededEntryIDs_global[entryId], syncedVoxelBlocks_global + entryId * SDF_BLOCK_SIZE3);
+		}
+	}
+	
+  }
+}
+
+template<class TVoxel>
 void ITMSwappingEngine_CUDA<TVoxel, ITMVoxelBlockHash>::SaveToGlobalMemory(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, ITMRenderState *renderState)
 {
 	ITMGlobalCache<TVoxel> *globalCache = scene->globalCache;
@@ -202,6 +271,31 @@ __global__ void buildListToSwapIn_device(int *neededEntryIDs, int *noNeededEntri
 	__syncthreads();
 
 	bool isNeededId = (swapStates[targetIdx].state == 1);
+
+	if (isNeededId) shouldPrefix = true;
+	__syncthreads();
+
+	if (shouldPrefix)
+	{
+		int offset = computePrefixSum_device<int>(isNeededId, noNeededEntries, blockDim.x * blockDim.y, threadIdx.x);
+		if (offset != -1 && offset < SDF_TRANSFER_BLOCK_NUM) neededEntryIDs[offset] = targetIdx;
+	}
+}
+
+__global__ void buildListToSwapOut_device(int *neededEntryIDs, int *noNeededEntries, ITMHashSwapState *swapStates,
+	ITMHashEntry *hashTable, int noTotalEntries)
+{
+	int targetIdx = threadIdx.x + blockIdx.x * blockDim.x;
+	if (targetIdx > noTotalEntries - 1) return;
+
+	__shared__ bool shouldPrefix;
+
+	shouldPrefix = false;
+	__syncthreads();
+
+	ITMHashSwapState &swapState = swapStates[targetIdx];
+
+	bool isNeededId = ( swapState.state == 2 && hashTable[targetIdx].ptr >= 0);
 
 	if (isNeededId) shouldPrefix = true;
 	__syncthreads();

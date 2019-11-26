@@ -26,7 +26,8 @@ namespace ITMLib
 		public:
 			void IntegrateGlobalIntoLocal(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, ITMRenderState *renderState);
 			void SaveToGlobalMemory(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, ITMRenderState *renderState);
-
+                        void SaveToGlobalMemory(ITMScene<TVoxel, ITMVoxelBlockHash> *scene); 
+			
 			ITMSwappingEngine_CUDA(void);
 			~ITMSwappingEngine_CUDA(void);
 		};

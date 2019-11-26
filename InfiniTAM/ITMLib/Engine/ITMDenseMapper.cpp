@@ -64,12 +64,12 @@ void ITMDenseMapper<TVoxel,TIndex>::ProcessFrame(const ITMView *view, const ITMT
 	// integration
 	sceneRecoEngine->IntegrateIntoScene(scene, view, trackingState, renderState);
 
-	if (swappingEngine != NULL) {
-		// swapping: CPU -> GPU
-		swappingEngine->IntegrateGlobalIntoLocal(scene, renderState);
-		// swapping: GPU -> CPU
-		swappingEngine->SaveToGlobalMemory(scene, renderState);
-	}
+// 	if (swappingEngine != NULL) {
+// 		// swapping: CPU -> GPU
+// 		swappingEngine->IntegrateGlobalIntoLocal(scene, renderState);
+// 		// swapping: GPU -> CPU
+// 		swappingEngine->SaveToGlobalMemory(scene, renderState);
+// 	}
 }
 
 template<class TVoxel, class TIndex>

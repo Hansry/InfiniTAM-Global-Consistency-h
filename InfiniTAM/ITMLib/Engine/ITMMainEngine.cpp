@@ -151,7 +151,9 @@ ITMTrackingState* ITMMainEngine::GetTrackingState(void) const {
 
 ITMMesh* ITMMainEngine::UpdateMesh(void)
 {
-	if (mesh != NULL) meshingEngine->MeshScene(mesh, GetPrimaryLocalMap()->scene);
+	if (mesh != NULL) {
+	  meshingEngine->MeshScene(mesh, GetPrimaryLocalMap()->scene);
+	}
 	return mesh;
 }
 

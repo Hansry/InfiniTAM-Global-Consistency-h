@@ -82,7 +82,6 @@ namespace ITMLib
 		  return allData[localMapId]; 
 		}
 
-
 		const ITMPoseConstraint & getRelation_const(int fromLocalMap, int toLocalMap) const;
 		ITMPoseConstraint & getRelation(int fromLocalMap, int toLocalMap);
 		void eraseRelation(int fromLocalMap, int toLocalMap);

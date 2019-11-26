@@ -286,7 +286,9 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::AllocateSceneF
 		  2 - most recent data is in active memory, should save this data back to host at some point
 		*/
 		//如果当前voxel block可见，则将其状态设为“该数据存在于host和activate memory,等待融合"
-		   if (hashVisibleType > 0 && swapStates[targetIdx].state != 2) swapStates[targetIdx].state = 1;
+		   if (hashVisibleType > 0 && swapStates[targetIdx].state != 2) {
+		     swapStates[targetIdx].state = 1;
+		   }
 		}
 
 		if (hashVisibleType > 0)
@@ -568,7 +570,7 @@ void ITMSceneReconstructionEngine_CPU<TVoxel,ITMVoxelBlockHHash>::AllocateSceneF
 		{
 			bool isVisibleEnlarged, isVisible;
 
-			if (hashVisibleType == 3)
+			if (hashVisibleType == 3) 
 			{
 				checkBlockVisibility<false>(isVisible, isVisibleEnlarged, hashEntry.pos, M_d, projParams_d, voxelSize, depthImgSize);
 				if (!isVisible) { entriesVisibleType[targetIdx] = 0; hashVisibleType = 0; }

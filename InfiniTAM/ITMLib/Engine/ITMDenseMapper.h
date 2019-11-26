@@ -46,6 +46,10 @@ namespace ITMLib
 			    Ommitting a separate image size for the depth images
 			    will assume same resolution as for the RGB images.
 			*/
+			
+			ITMSwappingEngine<TVoxel, TIndex> *GetSwappingEngine(void) const{
+			  return swappingEngine;
+			}
 			explicit ITMDenseMapper(const ITMLibSettings *settings);
 			~ITMDenseMapper();
 		};

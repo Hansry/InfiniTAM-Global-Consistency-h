@@ -33,8 +33,8 @@
 // Voxel Hashing definition and helper functions
 //////////////////////////////////////////////////////////////////////////
 
-#define SDF_BLOCK_SIZE 8				// SDF block size
-#define SDF_BLOCK_SIZE3 512				// SDF_BLOCK_SIZE3 = SDF_BLOCK_SIZE * SDF_BLOCK_SIZE * SDF_BLOCK_SIZE
+#define SDF_BLOCK_SIZE 4				// SDF block size
+#define SDF_BLOCK_SIZE3 64				// SDF_BLOCK_SIZE3 = SDF_BLOCK_SIZE * SDF_BLOCK_SIZE * SDF_BLOCK_SIZE
 #define SDF_LOCAL_BLOCK_NUM 0x40000		// Number of locally stored blocks, currently 2^17
 
 #define SDF_GLOBAL_BLOCK_NUM 0x120000	// Number of globally stored blocks: SDF_BUCKET_NUM + SDF_EXCESS_LIST_SIZE
@@ -60,7 +60,7 @@ struct ITMHashEntry
 	/** Offset in the excess list. */
 	int offset;
 	/** Pointer to the voxel block array.
-	    - >= 0 identifies an actual allocated entry in the voxel block array
+	    - >= 0 identifies an actual allocated entry in the voxel block array(VBA)
 	    - -1 identifies an entry that has been temporarily swapped out
 	    - -2 (representation dependent) e.g. entry that has been split at a finer resolution level
 	    - -3 identifies an unallocated block

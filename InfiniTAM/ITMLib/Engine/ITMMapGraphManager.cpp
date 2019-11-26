@@ -28,7 +28,9 @@ namespace ITMLib
 	int ITMVoxelMapGraphManager::createNewLocalMap(void)
 	{
 		int newIdx = (int)allData.size();
-		allData.push_back(new ITMLocalMap(settings, visualisationEngine, trackedImageSize));
+		ITMLocalMap* newLocalMap = new ITMLocalMap(settings, visualisationEngine, trackedImageSize);
+		allData.push_back(newLocalMap);
+// 		allData.push_back(new ITMLocalMap(settings, visualisationEngine, trackedImageSize));
 
 		//对于新分配的ITMLocalMap,对各种参数进行初始化
 		denseMapper->ResetScene(allData[newIdx]->scene);

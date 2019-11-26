@@ -28,6 +28,9 @@ namespace ITMLib
 
 			void IntegrateGlobalIntoLocal(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, ITMRenderState *renderState);
 			void SaveToGlobalMemory(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, ITMRenderState *renderState);
+			
+			/// NOTE 将判断是否可见的约束去掉，要做的是将整个子地图都swaping到host meomry中
+			void SaveToGlobalMemory(ITMScene<TVoxel, ITMVoxelBlockHash> *scene);
 
 			ITMSwappingEngine_CPU(void);
 			~ITMSwappingEngine_CPU(void);

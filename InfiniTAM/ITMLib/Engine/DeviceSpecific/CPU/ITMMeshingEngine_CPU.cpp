@@ -36,7 +36,9 @@ void ITMMeshingEngine_CPU<TVoxel, ITMVoxelBlockHash>::MeshScene(ITMMesh *mesh, c
 
 		globalPos = currentHashEntry.pos.toInt() * SDF_BLOCK_SIZE;
 
-		for (int z = 0; z < SDF_BLOCK_SIZE; z++) for (int y = 0; y < SDF_BLOCK_SIZE; y++) for (int x = 0; x < SDF_BLOCK_SIZE; x++)
+		for (int z = 0; z < SDF_BLOCK_SIZE; z++) 
+		  for (int y = 0; y < SDF_BLOCK_SIZE; y++) 
+		    for (int x = 0; x < SDF_BLOCK_SIZE; x++)
 		{
 			Vector3f vertList[12];
 			int cubeIndex = buildVertList(vertList, globalPos, Vector3i(x, y, z), localVBA, hashTable);
@@ -49,7 +51,9 @@ void ITMMeshingEngine_CPU<TVoxel, ITMVoxelBlockHash>::MeshScene(ITMMesh *mesh, c
 				triangles[noTriangles].p1 = vertList[triangleTable[cubeIndex][i + 1]] * factor;
 				triangles[noTriangles].p2 = vertList[triangleTable[cubeIndex][i + 2]] * factor;
 
-				if (noTriangles < noMaxTriangles - 1) noTriangles++;
+				if (noTriangles < noMaxTriangles - 1) {
+				  noTriangles++;
+				}
 			}
 		}
 	}

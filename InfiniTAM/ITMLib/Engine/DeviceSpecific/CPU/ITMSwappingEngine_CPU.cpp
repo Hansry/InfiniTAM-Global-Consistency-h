@@ -118,6 +118,91 @@ void ITMSwappingEngine_CPU<TVoxel, ITMVoxelBlockHash>::IntegrateGlobalIntoLocal(
 	}
 }
 
+/// @brief 将当前处于active memory（device memory）但是在当前视角不可见的数据存到gblobalMemory中（host memory）
+template<class TVoxel>
+void ITMSwappingEngine_CPU<TVoxel, ITMVoxelBlockHash>::SaveToGlobalMemory(ITMScene<TVoxel, ITMVoxelBlockHash> *scene)
+{
+	ITMGlobalCache<TVoxel> *globalCache = scene->globalCache;
+
+	ITMHashSwapState *swapStates = globalCache->GetSwapStates(false);
+
+	ITMHashEntry *hashTable = scene->index.GetEntries();
+
+	TVoxel *syncedVoxelBlocks_local = globalCache->GetSyncedVoxelBlocks(false);
+	bool *hasSyncedData_local = globalCache->GetHasSyncedData(false);
+	int *neededEntryIDs_local = globalCache->GetNeededEntryIDs(false);
+
+	TVoxel *syncedVoxelBlocks_global = globalCache->GetSyncedVoxelBlocks(false);
+	bool *hasSyncedData_global = globalCache->GetHasSyncedData(false);
+	int *neededEntryIDs_global = globalCache->GetNeededEntryIDs(false);
+
+	TVoxel *localVBA = scene->localVBA.GetVoxelBlocks();
+	int *voxelAllocationList = scene->localVBA.GetAllocationList();
+
+	int noTotalEntries = globalCache->noTotalEntries;
+	
+	int noNeededEntries = 0;
+	
+	int noAllocatedVoxelEntries = scene->localVBA.lastFreeBlockId;
+
+	for (int entryDestId = 0; entryDestId < noTotalEntries; entryDestId++)
+	{
+		if (noNeededEntries >= SDF_TRANSFER_BLOCK_NUM) break;
+
+		int localPtr = hashTable[entryDestId].ptr;
+		
+		ITMHashSwapState &swapState = swapStates[entryDestId];
+
+		//如果该voxel block满足三个条件，即将其从active memory(device memory)--> host memory
+		//1.该voxel block处于active memory
+		//2.指向该voxel block的entries成员变量pt>=0,意味着在VBA有实际存储的数据
+		//3.该voxel block在当前视角下不可见 (主要还是因为这个原因)
+		if (swapState.state == 2 && localPtr >= 0)
+		{
+			TVoxel *localVBALocation = localVBA + localPtr * SDF_BLOCK_SIZE3;
+
+			neededEntryIDs_local[noNeededEntries] = entryDestId;
+
+			hasSyncedData_local[noNeededEntries] = true;
+			//将需要swapped的数据拷贝到syncedVoxelBlocks_local中
+			memcpy(syncedVoxelBlocks_local + noNeededEntries * SDF_BLOCK_SIZE3, localVBALocation, SDF_BLOCK_SIZE3 * sizeof(TVoxel));
+
+			//将swapped后的数据状态改为0，意味着该数据在host memory中
+			swapStates[entryDestId].state = 0;
+
+			int vbaIdx = noAllocatedVoxelEntries;
+			if (vbaIdx < SDF_BUCKET_NUM - 1)
+			{
+				noAllocatedVoxelEntries++;
+				
+				voxelAllocationList[vbaIdx + 1] = localPtr;
+				//-1表示被swapped out
+				hashTable[entryDestId].ptr = -1;
+
+				for (int i = 0; i < SDF_BLOCK_SIZE3; i++) {
+				  localVBALocation[i] = TVoxel();
+				}
+			}
+
+			noNeededEntries++;
+		}
+	}
+
+	scene->localVBA.lastFreeBlockId = noAllocatedVoxelEntries;
+
+	// would copy neededEntryIDs_local, hasSyncedData_local and syncedVoxelBlocks_local into *_global here
+
+	if (noNeededEntries > 0)
+	{
+		for (int entryId = 0; entryId < noNeededEntries; entryId++)
+		{
+			if (hasSyncedData_global[entryId]){
+			    //syncedVoxelBlocks内存中的block数据转换到storedVoxelBlocks中
+			    globalCache->SetStoredData(neededEntryIDs_global[entryId], syncedVoxelBlocks_global + entryId * SDF_BLOCK_SIZE3);
+			}	
+		}
+	}
+}
 
 /// @brief 将当前处于active memory（device memory）但是在当前视角不可见的数据存到gblobalMemory中（host memory）
 template<class TVoxel>
@@ -186,7 +271,9 @@ void ITMSwappingEngine_CPU<TVoxel, ITMVoxelBlockHash>::SaveToGlobalMemory(ITMSce
 				//-1表示被swapped out
 				hashTable[entryDestId].ptr = -1;
 
-				for (int i = 0; i < SDF_BLOCK_SIZE3; i++) localVBALocation[i] = TVoxel();
+				for (int i = 0; i < SDF_BLOCK_SIZE3; i++) {
+				  localVBALocation[i] = TVoxel();
+				}
 			}
 
 			noNeededEntries++;

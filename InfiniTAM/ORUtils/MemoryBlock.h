@@ -235,7 +235,9 @@ namespace ORUtils
 //					if (dataMBytes > 100) {
 //						throw std::runtime_error("Large block allocated!");
 //					}
-#endif
+#endif                                  
+					float dataMBytes = dataBytes / 1024.0f / 1024.0f;
+					printf("Allocating block of %.4fMb of data on the GPU.\n", dataMBytes);
 					ORcudaSafeCall(cudaMalloc((void**)&data_cuda, dataBytes));
 				}
 				this->isAllocated_CUDA = allocate_CUDA;
