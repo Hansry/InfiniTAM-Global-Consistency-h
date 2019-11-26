@@ -59,9 +59,16 @@ void ITMDenseMapper<TVoxel,TIndex>::ProcessFrame(const ITMView *view, const ITMT
 	voxelBlockOpEngine->SplitAndMerge(scene, renderState);
 
 	// allocation
+	//步骤1：对于当前帧的深度图，遍历每一个像素，通过相机内参得到基于当前相机坐标系的三维空间点,并转换到世界坐标系下
+	//步骤2:查找该三维空间点所属的voxel block的三维空间坐标（具体做法为将三维空间点以m为单位转换成voxel block为单位），通过哈希映射计算其在
+	//     entriesAllocType，blockCoords（大小为：number of bucket + size of excess list）等的索引，并判断是否需要在voxelAllocationList
+	//     （大小为SDF_LOCAL_BLOCK_NUM（voxel block的个数） * SDF_BLOCK_SIZE3（voxel block存储值的大小））给voxel block分配新的位置
+	//步骤3:如果判断voxel block已存在，但是被swap out,则需要将其swap in, 如果不存在则需要在ordered list或者excess list进行分配
 	sceneRecoEngine->AllocateSceneFromDepth(scene, view, trackingState, renderState);
 
 	// integration
+	//步骤1:将当前坐标系对应的空间点转到世界坐标系，找到对应的voxel block
+	//步骤2:在voxel block中，对当前的空间点找到对应的volume,对其中的值进行融合
 	sceneRecoEngine->IntegrateIntoScene(scene, view, trackingState, renderState);
 
 // 	if (swappingEngine != NULL) {

@@ -15,8 +15,7 @@ namespace ITMLib
 	namespace Engine
 	{
 		/** \brief
-			Interface to engines that swap data in and out of the
-			fairly limited GPU memory to some large scale storage
+			Interface to engines that swap data in and out of the fairly limited GPU memory to some large scale storage
 			space.
 			*/
 		template<class TVoxel, class TIndex>

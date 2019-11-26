@@ -6,6 +6,7 @@
 #include "ITMPixelUtils.h"
 #include "ITMRepresentationAccess.h"
 
+///@brief 对TSDF模型中的sdf值进行融合，并不是深度值
 template<class TVoxel>
 _CPU_AND_GPU_CODE_ inline float computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel) &voxel, const THREADPTR(Vector4f) & pt_model, const CONSTPTR(Matrix4f) & M_d,
 	const CONSTPTR(Vector4f) & projParams_d, float mu, int maxW, const CONSTPTR(float) *depth, const CONSTPTR(Vector2i) & imgSize)
@@ -14,7 +15,8 @@ _CPU_AND_GPU_CODE_ inline float computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel) &
 	float depth_measure, eta, oldF, newF;
 	int oldW, newW;
 
-	// project point into image
+	// project point into image (depth image? hansry)
+	// 将世界坐标系下的空间点转到当前帧depth坐标系下
 	pt_camera = M_d * pt_model;
 	if (pt_camera.z <= 0) return -1;
 
@@ -23,17 +25,23 @@ _CPU_AND_GPU_CODE_ inline float computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel) &
 	if ((pt_image.x < 1) || (pt_image.x > imgSize.x - 2) || (pt_image.y < 1) || (pt_image.y > imgSize.y - 2)) return -1;
 
 	// get measured depth from image
+	// 从深度图获得对应的空间点坐标(空间点投影到像平面上)
 	depth_measure = depth[(int)(pt_image.x + 0.5f) + (int)(pt_image.y + 0.5f) * imgSize.x];
 	if (depth_measure <= 0.0) return -1;
 
 	// check whether voxel needs updating
+	// depth_measure为当前视角下传感器测量的深度值，pt_camera.z为当前视角光心到对应网格点的距离，从理论来说俩者应该一致
 	eta = depth_measure - pt_camera.z;
+	
+	// 若depth_measure小于pt_camera.z太多，则不更新网格的tsdf值
+	// mu即为max truncation
 	if (eta < -mu) return eta;
 
 	// compute updated SDF value and reliability
 	oldF = TVoxel::SDF_valueToFloat(voxel.sdf); oldW = voxel.w_depth;
 
 	newF = MIN(1.0f, eta / mu);
+	//新的sdf值的权重为1.0
 	newW = 1;
 
 	newF = oldW * oldF + newW * newF;
@@ -85,6 +93,7 @@ _CPU_AND_GPU_CODE_ inline void computeUpdatedVoxelColorInfo(DEVICEPTR(TVoxel) &v
 	voxel.w_color = (uchar)newW;
 }
 
+///@brief 对TSDF模型中的sdf值或者颜色信息进行融合，并不是深度值
 template<bool hasColor, class TVoxel> struct ComputeUpdatedVoxelInfo;
 
 template<class TVoxel>
@@ -115,6 +124,10 @@ struct ComputeUpdatedVoxelInfo<true, TVoxel> {
 	}
 };
 
+/// @brief 检查深度图x,y对应的voxel block是否已经被分配(通过检查hashEntry)，若已经被分配，是否需要将其可见性进行更新
+/// @param entriesAllocType_device 存储着 对应着entriAllocType_device的某个元素（对应索引为hashIdx） 的空间点是否需要被分配或者swap in, 
+///                                1表示在ordered part进行分配, 2表示需要在excess中进行分配
+/// @param blockCoords 存储了voxel block在当前坐标系下的三维空间坐标，而不是每个空间点的三维坐标
 _CPU_AND_GPU_CODE_ inline void buildHashAllocAndVisibleTypePP(DEVICEPTR(uchar) *entriesAllocType, DEVICEPTR(uchar) *entriesVisibleType, int x, int y,
 	DEVICEPTR(Vector4s) *blockCoords, const CONSTPTR(float) *depth, Matrix4f invM_d, Vector4f projParams_d, float mu, Vector2i imgSize,
 	float oneOverVoxelSize, const CONSTPTR(ITMHashEntry) *hashTable, float viewFrustum_min, float viewFrustum_max)
@@ -122,6 +135,7 @@ _CPU_AND_GPU_CODE_ inline void buildHashAllocAndVisibleTypePP(DEVICEPTR(uchar) *
 	float depth_measure; unsigned int hashIdx; int noSteps;
 	Vector3f pt_camera_f, point_e, point, direction; Vector3s blockPos;
 
+	//相机坐标系下将深度图转成空间点，通过width of the band进行约束
 	depth_measure = depth[x + y * imgSize.x];
 	if (depth_measure <= 0 || (depth_measure - mu) < 0 || (depth_measure - mu) < viewFrustum_min || (depth_measure + mu) > viewFrustum_max) return;
 
@@ -131,11 +145,15 @@ _CPU_AND_GPU_CODE_ inline void buildHashAllocAndVisibleTypePP(DEVICEPTR(uchar) *
 
 	float norm = sqrt(pt_camera_f.x * pt_camera_f.x + pt_camera_f.y * pt_camera_f.y + pt_camera_f.z * pt_camera_f.z);
 
+	//根据当前深度图的空间点转换到世界坐标系下，计算待分配空间(volume)的范围
 	Vector4f tmp;
 	tmp.x = pt_camera_f.x * (1.0f - mu / norm);
 	tmp.y = pt_camera_f.y * (1.0f - mu / norm);
 	tmp.z = pt_camera_f.z * (1.0f - mu / norm);
 	tmp.w = 1.0f;
+	
+	//oneOverVoxelSize = 1.0/(voxel_size*SDF_BLOCK_SIZE)
+	//将m为单位换成了以voxel block为计量单位
 	point = TO_VECTOR3(invM_d * tmp) * oneOverVoxelSize;
 	tmp.x = pt_camera_f.x * (1.0f + mu / norm);
 	tmp.y = pt_camera_f.y * (1.0f + mu / norm);
@@ -144,16 +162,22 @@ _CPU_AND_GPU_CODE_ inline void buildHashAllocAndVisibleTypePP(DEVICEPTR(uchar) *
 
 	direction = point_e - point;
 	norm = sqrt(direction.x * direction.x + direction.y * direction.y + direction.z * direction.z);
+	//ceil返回不小于value的最小整数
 	noSteps = (int)ceil(2.0f*norm);
 
+	//归一化，只取方向
 	direction /= (float)(noSteps - 1);
 
 	//add neighbouring blocks
 	for (int i = 0; i < noSteps; i++)
 	{
+	        //注意blockPos为以voxel blocks大小为单位的坐标，也就是说是每个voxel blocks的坐标而不是每个空间点的坐标
 		blockPos = TO_SHORT_FLOOR3(point);
 
 		//compute index in hash table
+		//template<typename T> _CPU_AND_GPU_CODE_ inline int hashIndex(const THREADPTR(T) & blockPos) {
+	        //    return (((uint)blockPos.x * 73856093u) ^ ((uint)blockPos.y * 19349669u) ^ ((uint)blockPos.z * 83492791u)) & (uint)SDF_HASH_MASK;
+                //}    
 		hashIdx = hashIndex(blockPos);
 
 		//check if hash table contains entry
@@ -161,14 +185,18 @@ _CPU_AND_GPU_CODE_ inline void buildHashAllocAndVisibleTypePP(DEVICEPTR(uchar) *
 
 		ITMHashEntry hashEntry = hashTable[hashIdx];
 
+		//由voxel block坐标通过hash function得到hash entry，判断hash entry存储的voxel block坐标(注意这里是voxel block的空间坐标，
+		//而不是空间点的坐标,是否与输入voxel block坐标一样， 若hash entry存储的voxel block坐标与输入的voxel block坐标一样，
+		//则已经被分配或者被swapped out （hashEntry.ptr>=-1）
 		if (IS_EQUAL3(hashEntry.pos, blockPos) && hashEntry.ptr >= -1)
 		{
 			//entry has been streamed out but is visible or in memory and visible
+		        //将该hash entry添加到可见列表中，若hashEntry.ptr==-1，则说明voxel block已经被swapped out,若hashEntry>-1,则说明该voxel block原本就是可见的
 			entriesVisibleType[hashIdx] = (hashEntry.ptr == -1) ? 2 : 1;
 
 			isFound = true;
 		}
-
+                //计算得到的hash entry存储的voxel block与输入的voxel block坐标不同
 		if (!isFound)
 		{
 			bool isExcess = false;
@@ -185,6 +213,8 @@ _CPU_AND_GPU_CODE_ inline void buildHashAllocAndVisibleTypePP(DEVICEPTR(uchar) *
 					if (IS_EQUAL3(hashEntry.pos, blockPos) && hashEntry.ptr >= -1)
 					{
 						//entry has been streamed out but is visible or in memory and visible
+					        // 2: in host memory (be swapped out) but visible
+					        // 1: in device memory and visible
 						entriesVisibleType[hashIdx] = (hashEntry.ptr == -1) ? 2 : 1;
 
 						isFound = true;
@@ -194,9 +224,13 @@ _CPU_AND_GPU_CODE_ inline void buildHashAllocAndVisibleTypePP(DEVICEPTR(uchar) *
 
 				isExcess = true;
 			}
-
+                        //如果计算的hashEntry在order part和unorder part都没有找到对应的voxel block，则需要新分配
+                        //分配有俩种情况：
+                        //1.当得到的hash entry在ordered part存储的voxel hash与输入的voxel block坐标不同，且在ordered part未被分配，即hashEntry.ptr<-1, 则需要在ordered part分配
+                        //2.当得到的hash entry在ordered part存储的voxel hash与输入的voxel block坐标不同，但在ordered part已被分配，即hashEntry.ptr>=-1,则需要在excess list分配
 			if (!isFound) //still not found
 			{
+			        //其中2表示在excess中进行分配，1表示在ordered part进行分配
 				entriesAllocType[hashIdx] = isExcess ? 2 : 1; //needs allocation 
 				if (!isExcess) entriesVisibleType[hashIdx] = 1; //new entry is visible
 

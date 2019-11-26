@@ -96,18 +96,22 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel,ITMVoxelBlockHash>::ResetScene(ITM
 	scene->index.SetLastFreeExcessListId(SDF_EXCESS_LIST_SIZE - 1);
 }
 
+/// @brief 根据当前视角的深度图转成空间中的voxel block后，判断voxel block是否已经在voxelAllocationList或者excessAllocationList分配，若已经分配，则更改其状态为当前可见，若还未分配，则进行分配。
 template<class TVoxel>
 void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::AllocateSceneFromDepth(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, const ITMView *view, 
 	const ITMTrackingState *trackingState, const ITMRenderState *renderState, bool onlyUpdateVisibleList)
 {
 	Vector2i depthImgSize = view->depth->noDims;
+	//场景体素的大小
 	float voxelSize = scene->sceneParams->voxelSize;
 
 	Matrix4f M_d, invM_d;
 	Vector4f projParams_d, invProjParams_d;
 
 	ITMRenderState_VH *renderState_vh = (ITMRenderState_VH*)renderState;
-
+	
+	//invM_d为世界坐标系到当前帧坐标系的变换矩阵Twc (其中w为给定的子地图)
+	//M_d为当前帧坐标系到世界坐标系下的变换矩阵Tcw
 	M_d = trackingState->pose_d->GetM(); 
 	M_d.inv(invM_d);
 
@@ -119,11 +123,20 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::AllocateScene
 	float mu = scene->sceneParams->mu;
 
 	float *depth = view->depth->GetData(MEMORYDEVICE_CUDA);
+	
+	//voxelAllocationList为分配的存储sdf的内存，大小为:voxel block的数量*voxel block的大小
 	int *voxelAllocationList = scene->localVBA.GetAllocationList();
+	//为了哈希冲突而额外分配的内存，用来存储sdf的内存， excessALlocationList该内存的首地址
 	int *excessAllocationList = scene->index.GetExcessAllocationList();
+	
+	//返回的是存储hash entry的列表hashTable，得到哈希表，通过哈希映射函数建立空间点与哈希表中的entry（ITMHashEntry数据类型）之间的关系
+	//其中blockPose为空间点，hashEntry为索引到VBA内存的数据类型
+	//hashIdx = hashIndex(blockPose) 
+	//ITMHashEntry hashEntry = hashTable[hashIdx]
 	ITMHashEntry *hashTable = scene->index.GetEntries();
 	ITMHashSwapState *swapStates = scene->useSwapping ? scene->globalCache->GetSwapStates(true) : 0;
 
+	// noTotalEntries = SDF_BUCKET_NUM（大小需要大于Voxel Block的数量） + SDF_EXCESS_LIST_SIZE(防止哈希冲突)
 	int noTotalEntries = scene->index.noTotalEntries;
 
 	int *visibleEntryIDs = renderState_vh->GetVisibleEntryIDs();
@@ -138,18 +151,28 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::AllocateScene
 	dim3 cudaBlockSizeVS(256, 1);
 	dim3 gridSizeVS((int)ceil((float)renderState_vh->noVisibleEntries / (float)cudaBlockSizeVS.x));
 
+	//1.0m下有多少个blocks
 	float oneOverVoxelSize = 1.0f / (voxelSize * SDF_BLOCK_SIZE);
 
 	AllocationTempData *tempData = (AllocationTempData*)allocationTempData_host;
+	//返回localVBA和ExcessList中倆段内存中还可以分配的Entries的数量，也可以说是分配的内存中最新的还没有被用的内存的地址
+	// _______________________________
+	//|___________________|||||||||||||
+	//  (这里分界线即lastFreeBlockId或者ExcessListId)
 	tempData->noAllocatedVoxelEntries = scene->localVBA.lastFreeBlockId;
 	tempData->noAllocatedExcessEntries = scene->index.GetLastFreeExcessListId();
 	tempData->noVisibleEntries = 0;
 	ITMSafeCall(cudaMemcpyAsync(allocationTempData_device, tempData, sizeof(AllocationTempData), cudaMemcpyHostToDevice));
 
+	// entriesAllocType_device存储着 对应着entriAllocType_device的某个元素 的空间点是否需要被分配或者swap in
+	// 1表示在ordered part进行分配, 2表示需要在excess中进行分配
 	ITMSafeCall(cudaMemsetAsync(entriesAllocType_device, 0, sizeof(unsigned char)* noTotalEntries));
 
-	if (gridSizeVS.x > 0) setToType3 << <gridSizeVS, cudaBlockSizeVS >> > (entriesVisibleType, visibleEntryIDs, renderState_vh->noVisibleEntries);
-
+	if (gridSizeVS.x > 0) {
+	  setToType3 << <gridSizeVS, cudaBlockSizeVS >> > (entriesVisibleType, visibleEntryIDs, renderState_vh->noVisibleEntries);
+	}
+	
+	/// 判断当前帧空间点是否为其分配内存或者已经被分配了，状态保存在entriesAlloType_device中
 	buildHashAllocAndVisibleType_device << <gridSizeHV, cudaBlockSizeHV >> >(entriesAllocType_device, entriesVisibleType, 
 		blockCoords_device, depth, invM_d, invProjParams_d, mu, depthImgSize, oneOverVoxelSize, hashTable,
 		scene->sceneParams->viewFrustum_min, scene->sceneParams->viewFrustum_max);
@@ -182,6 +205,7 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::AllocateScene
 	scene->index.SetLastFreeExcessListId(tempData->noAllocatedExcessEntries);
 }
 
+/// @brief 通过融合给定视角的深度和颜色信息来更新voxel blocks
 template<class TVoxel>
 void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::IntegrateIntoScene(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, const ITMView *view,
 	const ITMTrackingState *trackingState, const ITMRenderState *renderState)
@@ -195,9 +219,13 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::IntegrateInto
 
 	ITMRenderState_VH *renderState_vh = (ITMRenderState_VH*)renderState;
 
+	///M_d为当前帧坐标系到世界坐标系下的变换矩阵Tcw,即深度图片的坐标系到世界坐标系下的变换矩阵Td,w
 	M_d = trackingState->pose_d->GetM();
-	if (TVoxel::hasColorInformation) M_rgb = view->calib->trafo_rgb_to_depth.calib_inv * M_d;
-
+	if (TVoxel::hasColorInformation) {
+	  //Note that:calib.trafo_rgb_to_depth指的是将RGB坐标系下的空间点转到Depth坐标系下，从坐标系转换角度来看，应该是Tdepth->rgb,即Depth坐标系到RGB坐标系的变换
+	  //即calib.trafo_rgb_to_depth.calib_inv = Trgb,d (这里指坐标系的变换),因此Trgb,w = Trgb,d * Td,w
+	  M_rgb = view->calib->trafo_rgb_to_depth.calib_inv * M_d;
+	}
 	projParams_d = view->calib->intrinsics_d.projectionParamsSimple.all;
 	projParams_rgb = view->calib->intrinsics_rgb.projectionParamsSimple.all;
 
@@ -583,6 +611,7 @@ __global__ void integrateIntoSceneH_device(TVoxel *localVBA, const ITMHashEntry 
 	ComputeUpdatedVoxelInfo<TVoxel::hasColorInformation, TVoxel>::compute(localVoxelBlock[locId], pt_model, M_d, projParams_d, M_rgb, projParams_rgb, mu, maxW, depth, depthImgSize, rgb, rgbImgSize);
 }
 
+/// @brief 检查深度图x,y对应的voxel block是否已经被分配(通过检查hashEntry)，若已经被分配，是否需要将其可见性进行更新
 __global__ void buildHashAllocAndVisibleType_device(uchar *entriesAllocType, uchar *entriesVisibleType, Vector4s *blockCoords, const float *depth,
 	Matrix4f invM_d, Vector4f projParams_d, float mu, Vector2i _imgSize, float _voxelSize, ITMHashEntry *hashTable, float viewFrustum_min,
 	float viewFrustum_max)
@@ -625,6 +654,9 @@ __global__ void setToType3HH(uchar *entriesVisibleType, int *visibleEntryIDs, in
 	else entriesVisibleType[visibleEntryIDs[entryId]] = 3;
 }
 
+///@brief 根据voxelAllocationList存储的状态对targetIdx进行分配
+///@param voxelAllocationList 存储着对应的空间点在ordered list或者excess list是否需要分配或者分配的状态
+///@param blockCoords 对应的空间点三维坐标，需要对hashEntry中的成员变量pos进行赋值 
 __global__ void allocateVoxelBlocksList_device(int *voxelAllocationList, int *excessAllocationList, ITMHashEntry *hashTable, int noTotalEntries,
 	AllocationTempData *allocData, uchar *entriesAllocType, uchar *entriesVisibleType, Vector4s *blockCoords)
 {
@@ -643,10 +675,13 @@ __global__ void allocateVoxelBlocksList_device(int *voxelAllocationList, int *ex
 			Vector4s pt_block_all = blockCoords[targetIdx];
 
 			ITMHashEntry hashEntry;
-			hashEntry.pos.x = pt_block_all.x; hashEntry.pos.y = pt_block_all.y; hashEntry.pos.z = pt_block_all.z;
+			hashEntry.pos.x = pt_block_all.x; 
+			hashEntry.pos.y = pt_block_all.y; 
+			hashEntry.pos.z = pt_block_all.z;
 			hashEntry.ptr = voxelAllocationList[vbaIdx];
 			hashEntry.offset = 0;
-
+			
+			//在ordered list进行hash Entry的存储
 			hashTable[targetIdx] = hashEntry;
 		}
 		break;
@@ -665,11 +700,15 @@ __global__ void allocateVoxelBlocksList_device(int *voxelAllocationList, int *ex
 			hashEntry.offset = 0;
 
 			int exlOffset = excessAllocationList[exlIdx];
-
+			
+			//由于通过hash function对voxel block的位置计算得到的hash entry已经被占用，这时候需要添加offerset以找到excess list对应的地方进行存储
+			//需要强调下，offset的基准是SDF_BUCKET_NUM,即hashIdx = SDF_BUCKET_NUM + hashEntry.offset - 1
 			hashTable[targetIdx].offset = exlOffset + 1; //connect to child
 
+			//在excess list进行hash Entry的存储
 			hashTable[SDF_BUCKET_NUM + exlOffset] = hashEntry; //add child to the excess list
 
+			//设置为可见
 			entriesVisibleType[SDF_BUCKET_NUM + exlOffset] = 1; //make child visible
 		}
 

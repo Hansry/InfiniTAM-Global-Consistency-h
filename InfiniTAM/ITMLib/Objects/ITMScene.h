@@ -25,13 +25,13 @@ namespace ITMLib
 			/** Scene parameters like voxel size etc. */
 			const ITMSceneParams *sceneParams;
 
-			/** Hash table to reference the 8x8x8 blocks */
+			/** Hash table to reference the 8x8x8 or 4x4x4 blocks */
 			TIndex index;
 
-			/** Current local content of the 8x8x8 voxel blocks -- stored host or device */
+			/** Current local content of the 8x8x8 or 4x4x4 voxel blocks -- stored host or device */
 			ITMLocalVBA<TVoxel> localVBA;
 
-			/** Global content of the 8x8x8 voxel blocks -- stored on host only */
+			/** Global content of the 8x8x8 or 4x4x4 voxel blocks -- stored on host only */
 			ITMGlobalCache<TVoxel> *globalCache;
  
 			ITMScene(const ITMSceneParams *sceneParams, bool useSwapping, MemoryDeviceType memoryType)
@@ -49,7 +49,9 @@ namespace ITMLib
 
 			~ITMScene(void)
 			{
-				if (useSwapping) delete globalCache;
+				if (useSwapping) {
+				  delete globalCache;
+				}
 			}
 
 			// Suppress the default copy constructor and assignment operator

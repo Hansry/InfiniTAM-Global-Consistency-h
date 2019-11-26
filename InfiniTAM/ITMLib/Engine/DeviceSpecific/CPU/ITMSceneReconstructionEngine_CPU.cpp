@@ -94,6 +94,8 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::IntegrateIntoS
 		if (currentHashEntry.ptr < 0) continue;
 
 		//其中currentHashEntry.pos存储的xyz是以voxel block为计量单位，而不是m
+		//实际上globalPos为voxel block的三维坐标，而不是空间点的坐标，通过读取voxel block可以得到存储在
+		//voxel block中的空间点在sdf的表达（即通过得到voxel block,可以得到voxel block的网格中的sdf值）
 		globalPos.x = currentHashEntry.pos.x;
 		globalPos.y = currentHashEntry.pos.y;
 		globalPos.z = currentHashEntry.pos.z;
@@ -103,14 +105,19 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::IntegrateIntoS
 
 		TVoxel *localVoxelBlock = &(localVBA[currentHashEntry.ptr * (SDF_BLOCK_SIZE3)]);
 
-		for (int z = 0; z < SDF_BLOCK_SIZE; z++) for (int y = 0; y < SDF_BLOCK_SIZE; y++) for (int x = 0; x < SDF_BLOCK_SIZE; x++)
+		//对voxel block里面的sdf值进行更新
+		for (int z = 0; z < SDF_BLOCK_SIZE; z++) 
+		  for (int y = 0; y < SDF_BLOCK_SIZE; y++) 
+		    for (int x = 0; x < SDF_BLOCK_SIZE; x++)
 		{
 			Vector4f pt_model; int locId;
 			
-                        //一个voxel block中存储了8x8x8个voxels，需要找到他们的locId
+                        //一个voxel block中存储了8x8x8 or 4x4x4个voxels，需要找到他们的locId
 			locId = x + y * SDF_BLOCK_SIZE + z * SDF_BLOCK_SIZE * SDF_BLOCK_SIZE;
 
-			if (stopIntegratingAtMaxW) if (localVoxelBlock[locId].w_depth == maxW) continue;
+			if (stopIntegratingAtMaxW) 
+			  if (localVoxelBlock[locId].w_depth == maxW) 
+			    continue;
 			//if (approximateIntegration) if (localVoxelBlock[locId].w_depth != 0) continue;
 
 			//乘上voxelSize之后将globalPose以voxel为计量单位转成了pt_model以m为计量单位

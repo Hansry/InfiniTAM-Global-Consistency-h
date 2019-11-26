@@ -41,9 +41,11 @@ namespace ITMLib
 			{
 				this->memoryType = memoryType;
 
+				/// NOTE allocatedSize为每创建一个scene时候分配的内存大小，为分配的voxel blocks数量乘上每个voxel blocks的大小 
 				allocatedSize = noBlocks * blockSize;
-
 				voxelBlocks = new ORUtils::MemoryBlock<TVoxel>(allocatedSize, memoryType);
+				
+				/// NOTE allocatedList为创建每个scene时分配的这块内存中每个block的索引，但是注意每个block中依旧有内存可存储sdf值
 				allocationList = new ORUtils::MemoryBlock<int>(noBlocks, memoryType);
 			}
 
