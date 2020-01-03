@@ -35,6 +35,7 @@ namespace ITMLib
 
 			float terminationThreshold;
 
+			/// @brief 对深度法线金字塔进行预处理
 			void PrepareForEvaluation();
 			void SetEvaluationParams(int levelId);
 
@@ -42,6 +43,7 @@ namespace ITMLib
 			void ApplyDelta(const Matrix4f & para_old, const float *delta, Matrix4f & para_new) const;
 			bool HasConverged(float *step) const;
 
+			/// @brief 构建raycast和view的深度法线金字塔
 			void SetEvaluationData(ITMTrackingState *trackingState, const ITMView *view);
 		protected:
 			float *distThresh;
@@ -56,6 +58,9 @@ namespace ITMLib
 			virtual int ComputeGandH(float &f, float *nabla, float *hessian, Matrix4f approxInvPose) = 0;
 
 		public:
+		  	/** \brief 
+	                其中TrackingState为建好地图的点云或者通过光线投影得到的基于上一帧坐标系下的点云
+	                view 包含了当前帧的深度信息、深度不确定信息、RGB信息、法线信息等  */
 			void TrackCamera(ITMTrackingState *trackingState, const ITMView *view);
 
 			ITMDepthTracker(Vector2i imgSize, TrackerIterationType *trackingRegime, int noHierarchyLevels, int noICPRunTillLevel, float distThresh,

@@ -110,6 +110,8 @@ void ITMVisualisationEngine_CPU<TVoxel, TIndex>::CreateExpectedDepths(const ITMS
 	}
 }
 
+/// @brief 由于rendering Block在当前坐标系位置已知，可以选取voxelBlock的8个corner深度的
+///        最小最大值来作为投影到成像平面后对应的16x16小块的像素对应的深度范围，方便在对像素进行raycast的时候缩短其搜索范围
 template<class TVoxel>
 void ITMVisualisationEngine_CPU<TVoxel,ITMVoxelBlockHash>::CreateExpectedDepths(const ITMScene<TVoxel, ITMVoxelBlockHash> *scene, const ITMPose *pose, const ITMIntrinsics *intrinsics, 
 	ITMRenderState *renderState) const
@@ -140,6 +142,7 @@ void ITMVisualisationEngine_CPU<TVoxel,ITMVoxelBlockHash>::CreateExpectedDepths(
 		Vector2i upperLeft, lowerRight;
 		Vector2f zRange;
 		bool validProjection = false;
+		//blockData.ptr>=0表示在VBA有实际存在数据
 		if (blockData.ptr>=0) {
 			validProjection = ProjectSingleBlock(blockData.pos, pose->GetM(), intrinsics->projectionParamsSimple.all, imgSize, voxelSize, upperLeft, lowerRight, zRange);
 		}
@@ -147,8 +150,11 @@ void ITMVisualisationEngine_CPU<TVoxel,ITMVoxelBlockHash>::CreateExpectedDepths(
 
 		Vector2i requiredRenderingBlocks((int)ceilf((float)(lowerRight.x - upperLeft.x + 1) / (float)renderingBlockSizeX), 
 			(int)ceilf((float)(lowerRight.y - upperLeft.y + 1) / (float)renderingBlockSizeY));
+		
+		//由于将当前的voxel block从3D投影到2D成像平面上，得到bounding box，且将bouding box划分为多个16x16的小块，requiredNumBlocks为统计有多少个16x16的小块
 		int requiredNumBlocks = requiredRenderingBlocks.x * requiredRenderingBlocks.y;
 
+		//若超出最大的绘制的个数，则不再继续绘制，MAX_RENDERING_BLOCKS=65536*4
 		if (numRenderingBlocks + requiredNumBlocks >= MAX_RENDERING_BLOCKS) continue;
 		int offset = numRenderingBlocks;
 		numRenderingBlocks += requiredNumBlocks;
@@ -157,10 +163,12 @@ void ITMVisualisationEngine_CPU<TVoxel,ITMVoxelBlockHash>::CreateExpectedDepths(
 	}
 
 	// go through rendering blocks
+	// 遍历需要绘制的blocks（在2d平面上是16x16的大小），
 	for (int blockNo = 0; blockNo < numRenderingBlocks; ++blockNo) {
 		// fill minmaxData
 		const RenderingBlock & b(renderingBlocks[blockNo]);
 
+		//更新要绘制的block对应的16x16小块对应的pixel的最大最小值
 		for (int y = b.upperLeft.y; y <= b.lowerRight.y; ++y) {
 			for (int x = b.upperLeft.x; x <= b.lowerRight.x; ++x) {
 				Vector2f & pixel(minmaxData[x + y*imgSize.x]);
@@ -283,6 +291,7 @@ void ITMVisualisationEngine_CPU<TVoxel,ITMVoxelBlockHHash>::CreateExpectedDepths
 	}
 }
 
+/// @brief 对于每个像素而言，调用castRay函数得到每个像素对应的场景表面三维坐标，即pointsRay,同时更新renderState中的entriesVisibleType
 template<class TVoxel, class TIndex>
 static void GenericRaycast(const ITMScene<TVoxel,TIndex> *scene, const Vector2i& imgSize, const Matrix4f& invM, Vector4f projParams, const ITMRenderState *renderState)
 {
@@ -291,7 +300,9 @@ static void GenericRaycast(const ITMScene<TVoxel,TIndex> *scene, const Vector2i&
 
 	const Vector2f *minmaximg = renderState->renderingRangeImage->GetData(MEMORYDEVICE_CPU);
 	float mu = scene->sceneParams->mu;
+	//乘上oneOverVoxelSize意味着将以m为计量单位转换成以voxel为计量单位
 	float oneOverVoxelSize = 1.0f / scene->sceneParams->voxelSize;
+	//pointsRay存储的是当前帧的每个像素对应的场景表面的三维空间点,该三维空间点是基于世界坐标系下的
 	Vector4f *pointsRay = renderState->raycastResult->GetData(MEMORYDEVICE_CPU);
 	const TVoxel *voxelData = scene->localVBA.GetVoxelBlocks();
 	const typename TIndex::IndexData *voxelIndex = scene->index.getIndexData();
@@ -303,6 +314,7 @@ static void GenericRaycast(const ITMScene<TVoxel,TIndex> *scene, const Vector2i&
 	{
 		int y = locId/imgSize.x;
 		int x = locId - y*imgSize.x;
+		//主要是为了获得当前像素的最小最大深度值，方便对场景表面进行搜索
 		int locId2 = (int)floor((float)x / minmaximg_subsample) + (int)floor((float)y / minmaximg_subsample) * imgSize.x;
 
 		castRay<TVoxel, TIndex>(
@@ -319,6 +331,10 @@ static void GenericRaycast(const ITMScene<TVoxel,TIndex> *scene, const Vector2i&
 	}
 }
 
+/// @brief 绘制当前视角下的raycast image
+/// @param scene 已经构建的场景
+/// @param pose->GetInvM() 世界坐标系到当前坐标系下的变换矩阵，Twc
+/// @param outputImage 光线投影绘制得到的image
 template<class TVoxel, class TIndex>
 static void RenderImage_common(const ITMScene<TVoxel,TIndex> *scene, const ITMPose *pose, const ITMIntrinsics *intrinsics, 
 	const ITMRenderState *renderState, ITMUChar4Image *outputImage, ITMFloatImage *outputFloatImage, IITMVisualisationEngine::RenderImageType type)
@@ -329,7 +345,9 @@ static void RenderImage_common(const ITMScene<TVoxel,TIndex> *scene, const ITMPo
 	GenericRaycast(scene, imgSize, invM, intrinsics->projectionParamsSimple.all, renderState);
 
 	Vector3f lightSource = -Vector3f(invM.getColumn(2));
+	//其中outRendering为存储了需要绘制点数组首指针
 	Vector4u *outRendering = outputImage->GetData(MEMORYDEVICE_CPU);
+	// 获得pointsRay,注意pointsRay是基于世界坐标系下的三维空间点
 	Vector4f *pointsRay = renderState->raycastResult->GetData(MEMORYDEVICE_CPU);
 	const TVoxel *voxelData = scene->localVBA.GetVoxelBlocks();
 	const typename TIndex::IndexData *voxelIndex = scene->index.getIndexData();
@@ -408,19 +426,24 @@ static void CreatePointCloud_common(const ITMScene<TVoxel,TIndex> *scene, const 
 	);
 }
 
+///@brief 计算像素对应的场景空间点和法线
 template<class TVoxel, class TIndex>
 static void CreateICPMaps_common(const ITMScene<TVoxel,TIndex> *scene, const ITMView *view, ITMTrackingState *trackingState, ITMRenderState *renderState)
 {
 	Vector2i imgSize = renderState->raycastResult->noDims;
 	Matrix4f invM = trackingState->pose_d->GetInvM();
 
+	
 	GenericRaycast(scene, imgSize, invM, view->calib->intrinsics_d.projectionParamsSimple.all, renderState);
 	trackingState->pose_pointCloud->SetFrom(trackingState->pose_d);
-
+        
 	Vector3f lightSource = -Vector3f(invM.getColumn(2));
 	Vector4f *normalsMap = trackingState->pointCloud->colours->GetData(MEMORYDEVICE_CPU);
 	Vector4u *outRendering = renderState->raycastImage->GetData(MEMORYDEVICE_CPU);
+	
+	/// pointsMap为存储以m为量纲的raycast深度图和normal，由pointsRay通过函数processPixelICP计算得到
 	Vector4f *pointsMap = trackingState->pointCloud->locations->GetData(MEMORYDEVICE_CPU);
+	/// pointsRay为得到了当前视角下raycast回来的深度图，不过其量纲并不是以m为单位，而是以m/voxelSize为单位
 	Vector4f *pointsRay = renderState->raycastResult->GetData(MEMORYDEVICE_CPU);
 	float voxelSize = scene->sceneParams->voxelSize;
 
@@ -428,6 +451,7 @@ static void CreateICPMaps_common(const ITMScene<TVoxel,TIndex> *scene, const ITM
 	#pragma omp parallel for
 #endif
 	for (int y = 0; y < imgSize.y; y++) for (int x = 0; x < imgSize.x; x++)
+	        // true为smooth
 		processPixelICP<true>(outRendering, pointsMap, normalsMap, pointsRay, imgSize, x, y, voxelSize, lightSource);
 }
 

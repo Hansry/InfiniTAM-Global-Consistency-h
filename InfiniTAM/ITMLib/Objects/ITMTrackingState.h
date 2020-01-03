@@ -64,7 +64,8 @@ namespace ITMLib
 
 				return false;
 			}
-
+			
+			/// @brief 构造函数，使得requiresFullRendering=True
 			ITMTrackingState(Vector2i imgSize, MemoryDeviceType memoryType)
 			{
 				this->pointCloud = new ITMPointCloud(imgSize, memoryType);

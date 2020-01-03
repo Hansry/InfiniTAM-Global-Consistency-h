@@ -454,6 +454,7 @@ static void CreatePointCloud_common(const ITMScene<TVoxel, TIndex> *scene, const
 	ITMSafeCall(cudaMemcpy(&trackingState->pointCloud->noTotalPoints, noTotalPoints_device, sizeof(uint), cudaMemcpyDeviceToHost));
 }
 
+///@brief 计算像素对应的场景空间点和法线
 template<class TVoxel, class TIndex>
 void CreateICPMaps_common(const ITMScene<TVoxel, TIndex> *scene, const ITMView *view, ITMTrackingState *trackingState, ITMRenderState *renderState)
 {

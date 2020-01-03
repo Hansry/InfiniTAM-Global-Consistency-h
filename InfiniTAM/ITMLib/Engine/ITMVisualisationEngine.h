@@ -100,8 +100,7 @@ namespace ITMLib
 			virtual void CreatePointCloud(const ITMScene<TVoxel,TIndex> *scene, const ITMView *view, ITMTrackingState *trackingState, 
 				ITMRenderState *renderState, bool skipPoints) const = 0;
 
-			/** Create an image of reference points and normals as
-			required by the ITMLib::Engine::ITMDepthTracker classes.
+			/** Create an image of reference points and normals as required by the ITMLib::Engine::ITMDepthTracker classes.
 			*/
 			virtual void CreateICPMaps(const ITMScene<TVoxel,TIndex> *scene, const ITMView *view, ITMTrackingState *trackingState, 
 				ITMRenderState *renderState) const = 0;

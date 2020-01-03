@@ -10,9 +10,11 @@ using namespace ITMLib::Engine;
 ITMDepthTracker::ITMDepthTracker(Vector2i imgSize, TrackerIterationType *trackingRegime, int noHierarchyLevels, int noICPRunTillLevel, float distThresh,
 	float terminationThreshold, const ITMLowLevelEngine *lowLevelEngine, MemoryDeviceType memoryType)
 {
+        // 构建深度图的金字塔，称之为Hierarchy
 	viewHierarchy = new ITMImageHierarchy<ITMTemplatedHierarchyLevel<ITMFloatImage> >(imgSize, trackingRegime, noHierarchyLevels, memoryType, true);
 	sceneHierarchy = new ITMImageHierarchy<ITMSceneHierarchyLevel>(imgSize, trackingRegime, noHierarchyLevels, memoryType, true);
 
+	//noHierarchyLevels指金字塔的层数
 	this->noIterationsPerLevel = new int[noHierarchyLevels];
 	this->distThresh = new float[noHierarchyLevels];
 	
@@ -45,6 +47,7 @@ ITMDepthTracker::~ITMDepthTracker(void)
 
 void ITMDepthTracker::SetEvaluationData(ITMTrackingState *trackingState, const ITMView *view)
 {
+        //对金字塔的level0进行赋值
 	this->trackingState = trackingState;
 	this->view = view;
 
@@ -52,10 +55,14 @@ void ITMDepthTracker::SetEvaluationData(ITMTrackingState *trackingState, const I
 	viewHierarchy->levels[0]->intrinsics = view->calib->intrinsics_d.projectionParamsSimple.all;
 
 	// the image hierarchy allows pointers to external data at level 0
+	// 对当前视图构建深度图金字塔
 	viewHierarchy->levels[0]->depth = view->depth;
+	// 对上一帧进行raycast得到的raycast depth构建金字塔
 	sceneHierarchy->levels[0]->pointsMap = trackingState->pointCloud->locations;
+	// 对上一帧进行raycast得到的raycast normal构建金字塔
 	sceneHierarchy->levels[0]->normalsMap = trackingState->pointCloud->colours;
-
+	
+	//scenePose为某一帧坐标系到世界坐标系下的变换，即Tnw
 	scenePose = trackingState->pose_pointCloud->GetM();
 }
 
@@ -64,9 +71,12 @@ void ITMDepthTracker::PrepareForEvaluation()
 	for (int i = 1; i < viewHierarchy->noLevels; i++)
 	{
 		ITMTemplatedHierarchyLevel<ITMFloatImage> *currentLevelView = viewHierarchy->levels[i], *previousLevelView = viewHierarchy->levels[i - 1];
+		//根据金字塔上一层(previousLevel)进行下采样得到当前层（currentLevel）
 		lowLevelEngine->FilterSubsampleWithHoles(currentLevelView->depth, previousLevelView->depth);
+		//根据金字塔上一层深度图内参得到当前层(缩放至上一层的0.5倍)深度图内参
 		currentLevelView->intrinsics = previousLevelView->intrinsics * 0.5f;
 
+		// 创建光线投影得到的深度图的金字塔，即上一帧坐标系下从模型投影到该坐标系下的深度图的金字塔
 		ITMSceneHierarchyLevel *currentLevelScene = sceneHierarchy->levels[i], *previousLevelScene = sceneHierarchy->levels[i - 1];
 		//lowLevelEngine->FilterSubsampleWithHoles(currentLevelScene->pointsMap, previousLevelScene->pointsMap);
 		//lowLevelEngine->FilterSubsampleWithHoles(currentLevelScene->normalsMap, previousLevelScene->normalsMap);
@@ -144,6 +154,7 @@ void ITMDepthTracker::ApplyDelta(const Matrix4f & para_old, const float *delta, 
 
 void ITMDepthTracker::TrackCamera(ITMTrackingState *trackingState, const ITMView *view)
 {
+        
 	this->SetEvaluationData(trackingState, view);
 	this->PrepareForEvaluation();
 
