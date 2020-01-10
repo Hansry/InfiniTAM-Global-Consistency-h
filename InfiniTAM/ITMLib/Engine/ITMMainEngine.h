@@ -123,6 +123,8 @@ namespace ITMLib
 			/// switch for turning intergration on/off
 			void turnOnIntegration();
 			void turnOffIntegration();
+			
+			
 
 			/// switch for turning main processing on/off
 			void turnOnMainProcessing();

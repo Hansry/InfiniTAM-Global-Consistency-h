@@ -44,7 +44,8 @@ namespace ITMLib
 		        } trackerResult;
 
 			bool requiresFullRendering;
-
+			
+			///@brief 判断当前相机离上一次的raycast depth(看作是点云)是否已经较远了，如果相机已经移动了一定的距离，那么则此时认为需要重新生成raycast depth了
 			bool TrackerFarFromPointCloud(void) const
 			{
 				// if no point cloud exists, yet

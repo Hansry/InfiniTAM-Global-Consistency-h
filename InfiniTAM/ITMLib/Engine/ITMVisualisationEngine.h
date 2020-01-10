@@ -102,6 +102,7 @@ namespace ITMLib
 
 			/** Create an image of reference points and normals as required by the ITMLib::Engine::ITMDepthTracker classes.
 			*/
+			///@brief 计算像素对应的场景空间点和法线
 			virtual void CreateICPMaps(const ITMScene<TVoxel,TIndex> *scene, const ITMView *view, ITMTrackingState *trackingState, 
 				ITMRenderState *renderState) const = 0;
 				
@@ -116,6 +117,9 @@ namespace ITMLib
 
 			Incrementally previous raycast result.
 			*/
+			/// @brief 利用当前的renderState的场景表面三维空间点和法线的结果(renderState->raycastResult)，有可能是上一帧raycast得到的，也有可能是前n帧raycast得到的
+                        ///        并投影到当前视角下，对于没有对应的三维空间点(fwdProMisssingPoints)的像素,重新进行raycast (在这里所有的三维空间点信息量纲貌似是m/voxelSize),
+                        ///        得到所有像素对应的三维空间点后，进行法线和角度的计算
 			virtual void ForwardRender(const ITMScene<TVoxel,TIndex> *scene, const ITMView *view, ITMTrackingState *trackingState,
 				ITMRenderState *renderState) const = 0;
 

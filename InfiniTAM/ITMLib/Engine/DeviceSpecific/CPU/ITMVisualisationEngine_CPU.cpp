@@ -292,6 +292,7 @@ void ITMVisualisationEngine_CPU<TVoxel,ITMVoxelBlockHHash>::CreateExpectedDepths
 }
 
 /// @brief 对于每个像素而言，调用castRay函数得到每个像素对应的场景表面三维坐标，即pointsRay,同时更新renderState中的entriesVisibleType
+/// 由GenericRaycast得到renderState->raycastResult
 template<class TVoxel, class TIndex>
 static void GenericRaycast(const ITMScene<TVoxel,TIndex> *scene, const Vector2i& imgSize, const Matrix4f& invM, Vector4f projParams, const ITMRenderState *renderState)
 {
@@ -342,6 +343,7 @@ static void RenderImage_common(const ITMScene<TVoxel,TIndex> *scene, const ITMPo
 	Vector2i imgSize = outputImage->noDims;
 	Matrix4f invM = pose->GetInvM();
 
+	// 由GenericRaycast得到renderState->raycastResult
 	GenericRaycast(scene, imgSize, invM, intrinsics->projectionParamsSimple.all, renderState);
 
 	Vector3f lightSource = -Vector3f(invM.getColumn(2));
@@ -408,7 +410,8 @@ static void CreatePointCloud_common(const ITMScene<TVoxel,TIndex> *scene, const 
 {
 	Vector2i imgSize = renderState->raycastResult->noDims;
 	Matrix4f invM = trackingState->pose_d->GetInvM() * view->calib->trafo_rgb_to_depth.calib;
-
+        
+	// 由GenericRaycast得到renderState->raycastResult
 	GenericRaycast(scene, imgSize, invM, view->calib->intrinsics_rgb.projectionParamsSimple.all, renderState);
 	trackingState->pose_pointCloud->SetFrom(trackingState->pose_d);
 
@@ -455,6 +458,9 @@ static void CreateICPMaps_common(const ITMScene<TVoxel,TIndex> *scene, const ITM
 		processPixelICP<true>(outRendering, pointsMap, normalsMap, pointsRay, imgSize, x, y, voxelSize, lightSource);
 }
 
+/// @brief 利用当前的renderState的场景表面三维空间点和法线的结果(renderState->raycastResult)，有可能是上一帧raycast得到的，也有可能是前n帧raycast得到的
+///        并投影到当前视角下，对于没有对应的三维空间点(fwdProMisssingPoints)的像素,重新进行raycast (在这里所有的三维空间点信息量纲貌似是m/voxelSize),
+///        得到所有像素对应的三维空间点后，进行法线和角度的计算
 template<class TVoxel, class TIndex>
 static void ForwardRender_common(const ITMScene<TVoxel, TIndex> *scene, const ITMView *view, ITMTrackingState *trackingState, ITMRenderState *renderState)
 {
@@ -466,7 +472,9 @@ static void ForwardRender_common(const ITMScene<TVoxel, TIndex> *scene, const IT
 	invProjParams.x = 1.0f / invProjParams.x;
 	invProjParams.y = 1.0f / invProjParams.y;
 
+	/// 旋转矩阵第三列取负
 	Vector3f lightSource = -Vector3f(invM.getColumn(2));
+	/// 得到当前的renderState的场景表面三维空间点和法线的结果，有可能是上一帧raycast得到的，也有可能是前n帧raycast得到的
 	const Vector4f *pointsRay = renderState->raycastResult->GetData(MEMORYDEVICE_CPU);
 	Vector4f *forwardProjection = renderState->forwardProjection->GetData(MEMORYDEVICE_CPU);
 	float *currentDepth = view->depth->GetData(MEMORYDEVICE_CPU);
@@ -479,17 +487,23 @@ static void ForwardRender_common(const ITMScene<TVoxel, TIndex> *scene, const IT
 
 	renderState->forwardProjection->Clear();
 
-	for (int y = 0; y < imgSize.y; y++) for (int x = 0; x < imgSize.x; x++)
+	for (int y = 0; y < imgSize.y; y++) 
+	  for (int x = 0; x < imgSize.x; x++)
 	{
 		int locId = x + y * imgSize.x;
 		Vector4f pixel = pointsRay[locId];
-
+                
+		// 将像素对应的3D空间点投影到当前视角的Depth坐标系下的像平面上
 		int locId_new = forwardProjectPixel(pixel * voxelSize, M, projParams, imgSize);
-		if (locId_new >= 0) forwardProjection[locId_new] = pixel;
+		if (locId_new >= 0) {
+		  forwardProjection[locId_new] = pixel;
+		}
 	}
 
+	//统计投影回来的像平面没有三维空间点信息的像素数量
 	int noMissingPoints = 0;
-	for (int y = 0; y < imgSize.y; y++) for (int x = 0; x < imgSize.x; x++)
+	for (int y = 0; y < imgSize.y; y++) 
+	  for (int x = 0; x < imgSize.x; x++)
 	{
 		int locId = x + y * imgSize.x;
 		int locId2 = (int)floor((float)x / minmaximg_subsample) + (int)floor((float)y / minmaximg_subsample) * imgSize.x;
@@ -508,6 +522,7 @@ static void ForwardRender_common(const ITMScene<TVoxel, TIndex> *scene, const IT
 
 	renderState->noFwdProjMissingPoints = noMissingPoints;
     
+	//对于没有三维空间点的像素，重新进行raycast从场景表面进行获取
 	for (int pointId = 0; pointId < noMissingPoints; pointId++)
 	{
 		int locId = fwdProjMissingPoints[pointId];
@@ -518,7 +533,9 @@ static void ForwardRender_common(const ITMScene<TVoxel, TIndex> *scene, const IT
 			1.0f / scene->sceneParams->voxelSize, scene->sceneParams->mu, minmaximg[locId2]);
 	}
 
-	for (int y = 0; y < imgSize.y; y++) for (int x = 0; x < imgSize.x; x++)
+	//在填充完像平面对应的三维空间点信息后，对其计算法线和角度
+	for (int y = 0; y < imgSize.y; y++) 
+	  for (int x = 0; x < imgSize.x; x++)
 		processPixelForwardRender<true>(outRendering, forwardProjection, imgSize, x, y, voxelSize, lightSource);
 }
 
@@ -597,6 +614,9 @@ void ITMVisualisationEngine_CPU<TVoxel, ITMVoxelBlockHHash>::ForwardRender(const
 	ForwardRender_common(scene, view, trackingState, renderState);
 }
 
+/// @brief 得到locations和colours,其中ptsRay由GenericRaycast已经得到，但是量纲为 (m/voxelSize)
+/// @param locations 通过raycast得到像素点对应的稠密地图表面的三维空间点
+/// @param colours 通过raycast得到像素点对应的稠密地图表面的三维空间点的颜色信息
 template<class TVoxel, class TIndex>
 static int RenderPointCloud(Vector4u *outRendering, Vector4f *locations, Vector4f *colours, const Vector4f *ptsRay, 
 	const TVoxel *voxelData, const typename TIndex::IndexData *voxelIndex, bool skipPoints, float voxelSize, 
@@ -604,7 +624,8 @@ static int RenderPointCloud(Vector4u *outRendering, Vector4f *locations, Vector4
 {
 	int noTotalPoints = 0;
 
-	for (int y = 0, locId = 0; y < imgSize.y; y++) for (int x = 0; x < imgSize.x; x++, locId++)
+	for (int y = 0, locId = 0; y < imgSize.y; y++) 
+	  for (int x = 0; x < imgSize.x; x++, locId++)
 	{
 		Vector3f outNormal; float angle; 
 		Vector4f pointRay = ptsRay[locId];
@@ -622,12 +643,19 @@ static int RenderPointCloud(Vector4u *outRendering, Vector4f *locations, Vector4
 		{
 			Vector4f tmp;
 			tmp = VoxelColorReader<TVoxel::hasColorInformation, TVoxel, TIndex>::interpolate(voxelData, voxelIndex, point);
-			if (tmp.w > 0.0f) { tmp.x /= tmp.w; tmp.y /= tmp.w; tmp.z /= tmp.w; tmp.w = 1.0f; }
+			if (tmp.w > 0.0f) { 
+			  tmp.x /= tmp.w; 
+			  tmp.y /= tmp.w; 
+			  tmp.z /= tmp.w; 
+			  tmp.w = 1.0f; 
+			}
 			colours[noTotalPoints] = tmp;
 
 			Vector4f pt_ray_out;
-			pt_ray_out.x = point.x * voxelSize; pt_ray_out.y = point.y * voxelSize;
-			pt_ray_out.z = point.z * voxelSize; pt_ray_out.w = 1.0f;
+			pt_ray_out.x = point.x * voxelSize; 
+			pt_ray_out.y = point.y * voxelSize;
+			pt_ray_out.z = point.z * voxelSize; 
+			pt_ray_out.w = 1.0f;
 			locations[noTotalPoints] = pt_ray_out;
 
 			noTotalPoints++;
