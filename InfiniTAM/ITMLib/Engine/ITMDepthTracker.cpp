@@ -144,9 +144,9 @@ void ITMDepthTracker::ApplyDelta(const Matrix4f & para_old, const float *delta, 
 
 	Matrix4f Tinc;
 
-	Tinc.m00 = 1.0f;		Tinc.m10 = step[2];		Tinc.m20 = -step[1];	Tinc.m30 = step[3];
-	Tinc.m01 = -step[2];	Tinc.m11 = 1.0f;		Tinc.m21 = step[0];		Tinc.m31 = step[4];
-	Tinc.m02 = step[1];		Tinc.m12 = -step[0];	Tinc.m22 = 1.0f;		Tinc.m32 = step[5];
+	Tinc.m00 = 1.0f;		Tinc.m10 = step[2];		Tinc.m20 = -step[1];	        Tinc.m30 = step[3];
+	Tinc.m01 = -step[2];	        Tinc.m11 = 1.0f;		Tinc.m21 = step[0];		Tinc.m31 = step[4];
+	Tinc.m02 = step[1];		Tinc.m12 = -step[0];	        Tinc.m22 = 1.0f;		Tinc.m32 = step[5];
 	Tinc.m03 = 0.0f;		Tinc.m13 = 0.0f;		Tinc.m23 = 0.0f;		Tinc.m33 = 1.0f;
 
 	para_new = Tinc * para_old;

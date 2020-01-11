@@ -81,6 +81,7 @@ void ITMPose::SetFrom(const ITMPose *pose)
 	M = pose->M;
 }
 
+///李代数se3->李群SE3
 void ITMPose::SetModelViewFromParams()
 {
 	float one_6th = 1.0f/6.0f;
@@ -88,7 +89,8 @@ void ITMPose::SetModelViewFromParams()
 
 	Vector3f w; w.x = params.each.rx; w.y = params.each.ry; w.z = params.each.rz;
 	Vector3f t; t.x = params.each.tx; t.y = params.each.ty; t.z = params.each.tz;
-
+        
+	///由李代数转变换矩阵，见机器人学中的状态估计，theta为旋转角度
 	float theta_sq = dot(w, w);
 	float theta = sqrt(theta_sq);
 
@@ -96,34 +98,59 @@ void ITMPose::SetModelViewFromParams()
 
 	Matrix3f R; Vector3f T;
 
+	///cross为叉积
+	///       | 0   -w3  w2 | | t1 |
+	///crossV=| w3   0  -w1 |*| t2 |
+	///       |-w2   w1  0  | | t3 |
 	Vector3f crossV = cross(w, t);
 	if (theta_sq < 1e-8f)
 	{
-		A = 1.0f - one_6th * theta_sq; B = 0.5f;
-		T.x = t.x + 0.5f * crossV.x; T.y = t.y + 0.5f * crossV.y; T.z = t.z + 0.5f * crossV.z;
+		A = 1.0f - one_6th * theta_sq; 
+		B = 0.5f;
+		// 当theta_sq很小的时候，说明此时旋转角度很小，因此可以只考虑指数映射的前俩项
+ 		// (1+0.5*w^)*t (t为李代数对应的李群平移向量的向量)
+		T.x = t.x + 0.5f * crossV.x; 
+		T.y = t.y + 0.5f * crossV.y;
+		T.z = t.z + 0.5f * crossV.z;
 	}
 	else
 	{
 		float C;
 		if (theta_sq < 1e-6f)
 		{
+		        ///由于此时的旋转角度不是特别小，因此考虑到指数映射的前三项，见《机器人状态估计》中的公式(7.23)P192
+		        ///one_6th = 1/3!, one_6th*one_20th = 1/5!
 			C = one_6th * (1.0f - one_20th * theta_sq);
 			A = 1.0f - theta_sq * C;
 			B = 0.5f - 0.25f * one_6th * theta_sq;
 		}
 		else
 		{
-			float inv_theta = 1.0f / theta;
+		        ///当旋转角度过大的时候，由于r=Jp(r为变换矩阵对应的平移，J为左雅克比矩阵，p为李代数对应平移的分量)
+		        ///当角度过大时，需要将J进行级数的展开，对应《机器人状态估计》的公式(7.37)，195p
+		        /// J=sin(theta)/theta + (1-sin(theta)/theta)*aaT + ((1-cos(theta))/theta)*a^
+		        /// 又a^a^ = -1+aaT
+		        /// J = 1 + (1-sin(theta)/theta)*a^a^ + (1-cos(theta))(1/theta)*a^
+		        /// 而a=THETA/theta （a代表旋转轴，theta为THETA的模长），故可得
+		        /// J = 1 + (1-sin(theta)/theta)*(1/theta)*(1/theta)*(THETA^)(THETA^) + (1-cos(theta))*(1/theta)*（1/theta）*(THETA)^
+		        /// 故 C = (1-sin(theta)/theta)*(1/theta)*(1/theta), B=(1-cos(theta))*(1/theta)*（1/theta）
+			float inv_theta = 1.0f / theta; 
 			A = sinf(theta) * inv_theta;
 			B = (1.0f - cosf(theta)) * (inv_theta * inv_theta);
 			C = (1.0f - A) * (inv_theta * inv_theta);
 		}
-
+		
+		///                | 0   -w3  w2| |0   -w3  w2 | |t1|
+		///cross2=w*crossV=| w3   0  -w1|*|w3   0  -w1 |*|t2|
+		///                |-w2   w1  0 | |-w2   w1  0 | |t3|
 		Vector3f cross2 = cross(w, crossV);
-
-		T.x = t.x + B * crossV.x + C * cross2.x; T.y = t.y + B * crossV.y + C * cross2.y; T.z = t.z + B * crossV.z + C * cross2.z;
+                
+		T.x = t.x + B * crossV.x + C * cross2.x; 
+		T.y = t.y + B * crossV.y + C * cross2.y; 
+		T.z = t.z + B * crossV.z + C * cross2.z;
 	}
 
+	///对于旋转李代数转化为旋转矩阵，可见《机器人学中的状态估计》P192
 	float wx2 = w.x * w.x, wy2 = w.y * w.y, wz2 = w.z * w.z;
 	R.m[0 + 3 * 0] = 1.0f - B*(wy2 + wz2);
 	R.m[1 + 3 * 1] = 1.0f - B*(wx2 + wz2);
@@ -151,6 +178,7 @@ void ITMPose::SetModelViewFromParams()
 	M.m[3 + 4*0] = 0.0f; M.m[3 + 4*1] = 0.0f; M.m[3 + 4*2] = 0.0f; M.m[3 + 4*3] = 1.0f;
 }
 
+///李群SE3->李代数se3
 void ITMPose::SetParamsFromModelView()
 {
 	Vector3f resultRot;
@@ -233,6 +261,7 @@ void ITMPose::SetParamsFromModelView()
 	this->params.each.tx = rottrans.x; this->params.each.ty = rottrans.y; this->params.each.tz = rottrans.z; 
 }
 
+/// tangent为切空间的意思
 ITMPose ITMPose::exp(const Vector6f& tangent)
 {
 	return ITMPose(tangent);

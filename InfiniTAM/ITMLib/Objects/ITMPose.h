@@ -19,6 +19,7 @@ namespace ITMLib
 			    six parameters. The three rotation parameters are
 			    the Lie algebra representation of SO3.
 			*/
+			//all和struct共享内存
 			union
 			{
 				float all[6];

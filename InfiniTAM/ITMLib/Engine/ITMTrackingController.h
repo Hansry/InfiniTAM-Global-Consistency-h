@@ -31,6 +31,7 @@ namespace ITMLib
 
 		public:
 			void Track(ITMTrackingState *trackingState, const ITMView *view);
+			/// @brief 通过光线投影绘制当前视角的可见地图的信息，便于跟踪和显示
 			void Prepare(ITMTrackingState *trackingState, const ITMScene<ITMVoxel, ITMVoxelIndex> *scene, const ITMView *view, ITMRenderState *renderState);
 
 			ITMTrackingController(ITMTracker *tracker, const ITMVisualisationEngine<ITMVoxel, ITMVoxelIndex> *visualisationEngine, const ITMLowLevelEngine *lowLevelEngine,
