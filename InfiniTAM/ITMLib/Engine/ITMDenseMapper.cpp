@@ -80,10 +80,25 @@ void ITMDenseMapper<TVoxel,TIndex>::ProcessFrame(const ITMView *view, const ITMT
 }
 
 template<class TVoxel, class TIndex>
+void ITMDenseMapper<TVoxel,TIndex>::Decay(
+     ITMScene<TVoxel,TIndex> *scene,
+     ITMRenderState *renderState,
+     int maxWeight,
+     int minAge,
+     bool forceAllVoxels)
+{
+     sceneRecoEngine->Decay(scene, renderState, maxWeight, minAge, forceAllVoxels);
+}
+
+template<class TVoxel, class TIndex>
+size_t ITMDenseMapper<TVoxel, TIndex>::GetDecayedBlockCount() const{
+  return sceneRecoEngine->GetDecayedBlockCount();
+}
+
+template<class TVoxel, class TIndex>
 void ITMDenseMapper<TVoxel,TIndex>::UpdateVisibleList(const ITMView *view, const ITMTrackingState *trackingState, ITMScene<TVoxel,TIndex> *scene, ITMRenderState *renderState)
 {
 	sceneRecoEngine->AllocateSceneFromDepth(scene, view, trackingState, renderState, true);
 }
 
 template class ITMLib::Engine::ITMDenseMapper<ITMVoxel, ITMVoxelIndex>;
-

@@ -42,6 +42,13 @@ namespace ITMLib
 			/// Update the visible list (this can be called to update the visible list when fusion is turned off)
 			void UpdateVisibleList(const ITMView *view, const ITMTrackingState *trackingState, ITMScene<TVoxel,TIndex> *scene, ITMRenderState *renderState);
 
+			/// @brief 移除权重小于maxWeight和年龄大于minAge的voxel,这些voxel对应的block将会被释放,
+			///        如果foceAllVoxels=true,那么该操作将会在地图的所有voxels上进行，这可能会非常的慢；
+			///        反之，系统只会在可见的voxel列表中进行decay,虽然这不是100%准确，但是对于大场景的地图来说，速度要快几个数量级。
+			void Decay(ITMScene<TVoxel,TIndex> *scene, ITMRenderState *renderState, int maxWeight, int minAge, bool forceAllVoxels = false);
+			
+			size_t GetDecayedBlockCount() const;
+			
 			/** \brief Constructor
 			    Ommitting a separate image size for the depth images
 			    will assume same resolution as for the RGB images.
@@ -50,6 +57,7 @@ namespace ITMLib
 			ITMSwappingEngine<TVoxel, TIndex> *GetSwappingEngine(void) const{
 			  return swappingEngine;
 			}
+			
 			explicit ITMDenseMapper(const ITMLibSettings *settings);
 			~ITMDenseMapper();
 		};

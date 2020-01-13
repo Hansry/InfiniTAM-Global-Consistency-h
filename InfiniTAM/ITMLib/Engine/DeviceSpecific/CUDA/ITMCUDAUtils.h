@@ -143,3 +143,20 @@ inline void fillArrayKernel(T *devPtr, size_t nwords)
 	fillArrayKernel_device<T> <<<gridSize,blockSize>>>(devPtr, nwords);
 }
 
+/// \brief Naive reduction limited to a single block, useful for, e.g., quickly counting things.
+/// Mutates `input`. The result will be left in `input[0]`.
+template<typename T>
+__device__
+void blockReduce(T *input, int count, int localId) {
+	if (localId >= count) {
+		return;
+	}
+
+	for(unsigned int s = count / 2; s > 0; s >>= 1) {
+		if (localId < s) {
+			int neighborId = localId + s;
+			input[localId] = input[localId] + input[neighborId];
+		}
+	        __syncthreads();
+	}
+}

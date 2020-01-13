@@ -40,6 +40,15 @@ namespace ITMLib
 			*/
 			virtual void AllocateSceneFromDepth(ITMScene<TVoxel,TIndex> *scene, const ITMView *view, const ITMTrackingState *trackingState,
 				const ITMRenderState *renderState, bool onlyUpdateVisibleList = false) = 0;
+				
+			virtual void Decay(ITMScene<TVoxel,TIndex> *scene,
+			                   const ITMRenderState *renderState,
+		                           int maxWeight,
+		                           int minAge,
+		                           bool forceAllVoxels) = 0;
+				
+			///@brief 返回被decayed掉（释放掉）的voxel block的个数
+			virtual size_t GetDecayedBlockCount() = 0;
 
 			/** Update the voxel blocks by integrating depth and
 			    possibly colour information from the given view.

@@ -39,7 +39,8 @@ _CPU_AND_GPU_CODE_ inline int findVoxel(const CONSTPTR(ITMLib::Objects::ITMVoxel
 		if (IS_EQUAL3(hashEntry.pos, blockPos) && hashEntry.ptr >= 0)
 		{
 			isFound = true;
-			cache.blockPos = blockPos; cache.blockPtr = hashEntry.ptr * SDF_BLOCK_SIZE3;
+			cache.blockPos = blockPos; 
+			cache.blockPtr = hashEntry.ptr * SDF_BLOCK_SIZE3;
 			return cache.blockPtr + linearIdx;
 		}
 
@@ -49,6 +50,97 @@ _CPU_AND_GPU_CODE_ inline int findVoxel(const CONSTPTR(ITMLib::Objects::ITMVoxel
 
 	isFound = false;
 	return -1;
+}
+
+_CPU_AND_GPU_CODE_ inline int findBlock(
+		const CONSTPTR(ITMLib::Objects::ITMVoxelBlockHash::IndexData) *hashMap,
+		const THREADPTR(Vector3i) &blockPos,
+        THREADPTR(bool) &isFound
+) {
+	int idx = hashIndex(blockPos);
+
+	while (true) {
+		ITMHashEntry hashEntry = hashMap[idx];
+		if (IS_EQUAL3(hashEntry.pos, blockPos) && hashEntry.ptr >= 0)
+		{
+			isFound = true;
+			return idx;
+		}
+
+		if (hashEntry.offset < 1) {
+			break;
+		}
+
+		idx = static_cast<int>(SDF_BUCKET_NUM) + hashEntry.offset - 1;
+	}
+
+	return -1;
+}
+
+/// \brief Finds a voxel based on its linear in-block coords (linearIdx) and block location
+///        (blockGridCoords).
+/// \params outHashIdx If the voxel is found (isFound == true), this is set to the index of the
+///         voxel's entry in the hash table.
+/// \params outPrevHashIdx If the voxel is found (isFound == true), and its block is in the excess
+///         list, this will be the index of the block's predecessor in the hash table. Otherwise,
+///         this will be set to -1.
+_CPU_AND_GPU_CODE_ inline int findVoxel(
+		const CONSTPTR(ITMLib::Objects::ITMVoxelBlockHash::IndexData) *voxelIndex,
+		const THREADPTR(Vector3i) &blockGridCoords,
+		int linearIdx,
+		THREADPTR(bool) &isFound,
+		THREADPTR(int) &outHashIdx,
+		THREADPTR(int) &outPrevHashIdx
+) {
+        //以block为单位的三维空间坐标
+	Vector3i blockPos = blockGridCoords;
+	outPrevHashIdx = -1;
+
+	// Look for the voxel in the excess list, by walking it until the end of the "chain".
+	// 通过hashIndex计算得到blockPos对应的hashIdx
+	int hashIdx = hashIndex(blockPos);
+
+	while (true)
+	{
+	        //其实voxelIndex就是hashTable
+	        //这里传进来的voxelIndex其实就是ITMHashEntry类型的hashTable
+		ITMHashEntry hashEntry = voxelIndex[hashIdx];
+
+		if (IS_EQUAL3(hashEntry.pos, blockPos) && hashEntry.ptr >= 0)
+		{
+			isFound = true;
+			// Return the offset of the voxel in the VBA.
+			outHashIdx = hashIdx;
+			///1. localVoxelBlock = localVBA[hashEntry.ptr*SDF_BLOCK_SIZE3]
+			///2.  Voxel = localVoxel[linearIdx] 其中linearIdx=locId
+			///1.2等价于 Voxel = localVBA[hashEntry.ptr*SDF_BLOCK_SIZE3+linearIdx],因此返回的是(hashEntry.ptr * SDF_BLOCK_SIZE3) + linearIdx
+			return (hashEntry.ptr * SDF_BLOCK_SIZE3) + linearIdx;
+		}
+
+		if (hashEntry.offset < 1) {
+			break;
+		}
+
+		outPrevHashIdx = hashIdx;
+		hashIdx = SDF_BUCKET_NUM + hashEntry.offset - 1;
+	}
+
+	outHashIdx = -1;
+	isFound = false;
+	return -1;
+}
+
+_CPU_AND_GPU_CODE_ inline int findVoxel(
+		const CONSTPTR(ITMLib::Objects::ITMVoxelBlockHash::IndexData) *voxelIndex,
+		const THREADPTR(Vector3i) &point,
+		THREADPTR(bool) &isFound,
+		THREADPTR(int) &outHashIdx,
+		THREADPTR(int) &outPrevHashIdx
+) {
+	Vector3i blockPos;
+	int linearIdx = pointToVoxelBlockPos(point, blockPos);
+
+	return findVoxel(voxelIndex, blockPos, linearIdx, isFound, outHashIdx, outPrevHashIdx);
 }
 
 _CPU_AND_GPU_CODE_ inline int findVoxel(const CONSTPTR(ITMLib::Objects::ITMVoxelBlockHash::IndexData) *voxelIndex, Vector3i point, THREADPTR(bool) &isFound)

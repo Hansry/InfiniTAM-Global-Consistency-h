@@ -68,6 +68,10 @@ namespace ITMLib
 
 			/// Further, scene specific parameters such as voxel size
 			ITMLib::Objects::ITMSceneParams sceneParams;
+			
+			/// @brief The number of voxel blocks stored on the GPU.
+			///        This imposes a hard limit on the maximum
+			long sdfLocalBlockNum;
 
 			ITMLibSettings(void);
 			~ITMLibSettings(void);

@@ -66,6 +66,10 @@ struct ITMHashEntry
 	    - -3 identifies an unallocated block
 	*/
 	int ptr;
+	
+         /** \brief Indicates the frame when this hash entry was most recently allocated.
+	 * This is used for avoiding double-deletions when voxel decay is enabled. */
+	int allocatedTime;
 };
 
 struct ITMHashSwapState
@@ -102,8 +106,13 @@ struct ITMVoxel_f_rgb
 	Vector3u clr;
 	/** Number of observations that made up @p clr. */
 	uchar w_color;
-
+	
 	_CPU_AND_GPU_CODE_ ITMVoxel_f_rgb()
+	{
+	  reset();
+	}
+
+	_CPU_AND_GPU_CODE_ void reset()
 	{
 		sdf = SDF_initialValue();
 		w_depth = 0;
@@ -133,8 +142,12 @@ struct ITMVoxel_s_rgb
 	Vector3u clr;
 	/** Number of observations that made up @p clr. */
 	uchar w_color;
+	
+	_CPU_AND_GPU_CODE_ ITMVoxel_s_rgb(){
+	  reset();
+	}
 
-	_CPU_AND_GPU_CODE_ ITMVoxel_s_rgb()
+	_CPU_AND_GPU_CODE_ void reset()
 	{
 		sdf = SDF_initialValue();
 		w_depth = 0;
@@ -157,8 +170,12 @@ struct ITMVoxel_s
 	uchar w_depth;
 	/** Padding that may or may not improve performance on certain GPUs */
 	//uchar pad;
+	
+	_CPU_AND_GPU_CODE_ ITMVoxel_s(){
+	  reset();
+	}
 
-	_CPU_AND_GPU_CODE_ ITMVoxel_s()
+	_CPU_AND_GPU_CODE_ void reset()
 	{
 		sdf = SDF_initialValue();
 		w_depth = 0;
@@ -180,10 +197,14 @@ struct ITMVoxel_f
 	/** Padding that may or may not improve performance on certain GPUs */
 	//uchar pad;
 
-	_CPU_AND_GPU_CODE_ ITMVoxel_f()
+	_CPU_AND_GPU_CODE_ ITMVoxel_f(){
+	    reset();
+	}
+
+	_CPU_AND_GPU_CODE_ void reset()
 	{
-		sdf = SDF_initialValue();
-		w_depth = 0;
+	    sdf = SDF_initialValue();
+	    w_depth = 0;
 	}
 };
 
