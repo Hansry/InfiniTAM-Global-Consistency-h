@@ -391,6 +391,13 @@ static void RenderImage_common(const ITMScene<TVoxel, TIndex> *scene, const ITMP
 
 	if ((type == IITMVisualisationEngine::RENDER_COLOUR_FROM_VOLUME)&&
 	    (!TVoxel::hasColorInformation)) type = IITMVisualisationEngine::RENDER_SHADED_GREYSCALE;
+	
+// 	if(!TVoxel::hasColorInformation){
+// 	  printf("%s","Do not has color information!");
+// 	}
+// 	else{
+// 	  printf("%s", "has color information!");
+// 	}
 
 	if ((type == IITMVisualisationEngine::RENDER_COLOURCODED)&&
 	    (!TIndex::hasColorCoding)) type = IITMVisualisationEngine::RENDER_SHADED_GREYSCALE;

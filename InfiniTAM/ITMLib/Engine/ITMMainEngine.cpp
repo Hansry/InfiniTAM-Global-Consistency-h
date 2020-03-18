@@ -167,6 +167,14 @@ void ITMMainEngine::SaveSceneToMesh(const char *objFileName)
 	delete mesh;
 }
 
+void ITMMainEngine::SaveCurrSceneToMesh(const char *objFileName, const ITMScene<ITMVoxel, ITMVoxelIndex>* currscene){
+        if (meshingEngine == NULL) return;
+        ITMMesh *mesh = new ITMMesh(settings->deviceType == ITMLibSettings::DEVICE_CUDA ? MEMORYDEVICE_CUDA : MEMORYDEVICE_CPU);
+        meshingEngine->MeshScene(mesh, currscene);
+        mesh->WriteOBJ(objFileName);
+        delete mesh;
+}
+
 void ITMMainEngine::ProcessFrame(ITMUChar4Image *rgbImage, ITMShortImage *rawDepthImage, ITMIMUMeasurement *imuMeasurement)
 {
 	// prepare image and turn it into a depth image

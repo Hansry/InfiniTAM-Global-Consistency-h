@@ -433,7 +433,7 @@ __device__ void deleteBlock(ITMHashEntry *hashTable,
   if(outPrevBlockIdx == -1){
     //In the ordered list
     if(hashTable[outBlockIdx].offset >= 1){
-      //In the ordered list, with a successor(继承者)，继承者就是hashTable【outBlockIdx】
+      //In the unordered list, with a successor(继承者)，继承者就是hashTable[outBlockIdx]
       long nextIdx = SDF_BUCKET_NUM + hashTable[outBlockIdx].offset -1 ;
       hashTable[outBlockIdx] = hashTable[nextIdx];
       

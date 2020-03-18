@@ -114,6 +114,7 @@ namespace ITMLib
 
 			/// Extracts a mesh from the current scene and saves it to the obj file specified by the file name
 			void SaveSceneToMesh(const char *objFileName);
+			void SaveCurrSceneToMesh(const char *objFileName, const ITMScene<ITMVoxel, ITMVoxelIndex>* currscene);
 
 			/// Get a result image as output
 			Vector2i GetImageSize(void) const;
