@@ -13,6 +13,7 @@ struct AllocationTempData {
 
 using namespace ITMLib::Engine;
 
+//融合操作函数
 template<class TVoxel, bool stopMaxW, bool approximateIntegration>
 __global__ void integrateIntoScene_device(TVoxel *localVBA, const ITMHashEntry *hashTable, int *noVisibleEntryIDs,
 	const Vector4u *rgb, Vector2i rgbImgSize, const float *depth, Vector2i imgSize, Matrix4f M_d, Matrix4f M_rgb, Vector4f projParams_d, 
@@ -27,6 +28,12 @@ template<class TVoxel, bool stopMaxW>
 __global__ void integrateIntoSceneH_device(TVoxel *localVBA, const ITMHashEntry *hashTable, int *liveEntryIDs,
 	const Vector4u *rgb, Vector2i rgbImgSize, const float *depth, Vector2i depthImgSize, Matrix4f M_d, Matrix4f M_rgb,
 	Vector4f projParams_d, Vector4f projParams_rgb, const ITMVoxelBlockHHash::IndexData *indexData,float smallestVoxelSize, float mu, int maxW);
+
+//反融合操作函数
+template<class TVoxel, bool stopMaxW, bool approximateIntegration>
+__global__ void DeIntegrateIntoScene_device(TVoxel *localVBA, const ITMHashEntry *hashTable, int *noVisibleEntryIDs,
+	const Vector4u *rgb, Vector2i rgbImgSize, const float *depth, Vector2i imgSize, Matrix4f M_d, Matrix4f M_rgb, Vector4f projParams_d, 
+	Vector4f projParams_rgb, float _voxelSize, float mu, int maxW);
 
 __global__ void buildHashAllocAndVisibleType_device(uchar *entriesAllocType, uchar *entriesVisibleType, Vector4s *blockCoords, const float *depth,
 	Matrix4f invM_d, Vector4f projParams_d, float mu, Vector2i _imgSize, float _voxelSize, ITMHashEntry *hashTable, float viewFrustum_min,
@@ -356,6 +363,63 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::IntegrateInto
 			rgb, rgbImgSize, depth, depthImgSize, M_d, M_rgb, projParams_d, projParams_rgb, voxelSize, mu, maxW);
 }
 
+
+/// @brief 通过融合给定视角的深度和颜色信息来更新voxel blocks
+template<class TVoxel>
+void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::DeIntegrateIntoScene(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, const ITMView *view,
+	const ITMTrackingState *trackingState, const ITMRenderState *renderState)
+{
+	Vector2i rgbImgSize = view->rgb->noDims;
+	Vector2i depthImgSize = view->depth->noDims;
+	float voxelSize = scene->sceneParams->voxelSize;
+
+	Matrix4f M_d, M_rgb;
+	Vector4f projParams_d, projParams_rgb;
+
+	ITMRenderState_VH *renderState_vh = (ITMRenderState_VH*)renderState;
+	
+	//如果当前视角没有任何有用的数据，则没必要进行内存分配
+	if(renderState_vh->noVisibleEntries == 0){
+	  return;
+	}
+
+	///M_d为当前帧坐标系到世界坐标系下的变换矩阵Tcw,即深度图片的坐标系到世界坐标系下的变换矩阵Td,w
+	M_d = trackingState->pose_d->GetM();
+	if (TVoxel::hasColorInformation) {
+	  //Note that:calib.trafo_rgb_to_depth指的是将RGB坐标系下的空间点转到Depth坐标系下，从坐标系转换角度来看，应该是Tdepth->rgb,即Depth坐标系到RGB坐标系的变换
+	  //即calib.trafo_rgb_to_depth.calib_inv = Trgb,d (这里指坐标系的变换),因此Trgb,w = Trgb,d * Td,w
+	  M_rgb = view->calib->trafo_rgb_to_depth.calib_inv * M_d;
+	}
+	projParams_d = view->calib->intrinsics_d.projectionParamsSimple.all;
+	projParams_rgb = view->calib->intrinsics_rgb.projectionParamsSimple.all;
+
+	float mu = scene->sceneParams->mu; int maxW = scene->sceneParams->maxW;
+
+	float *depth = view->depth->GetData(MEMORYDEVICE_CUDA);
+	Vector4u *rgb = view->rgb->GetData(MEMORYDEVICE_CUDA);
+	TVoxel *localVBA = scene->localVBA.GetVoxelBlocks();
+	ITMHashEntry *hashTable = scene->index.GetEntries();
+
+	int *visibleEntryIDs = renderState_vh->GetVisibleEntryIDs();
+
+	dim3 cudaBlockSize(SDF_BLOCK_SIZE, SDF_BLOCK_SIZE, SDF_BLOCK_SIZE);
+	dim3 gridSize(renderState_vh->noVisibleEntries);
+
+	if (scene->sceneParams->stopIntegratingAtMaxW)
+		if (trackingState->requiresFullRendering)
+			DeIntegrateIntoScene_device<TVoxel, true, false> << <gridSize, cudaBlockSize >> >(localVBA, hashTable, visibleEntryIDs,
+			rgb, rgbImgSize, depth, depthImgSize, M_d, M_rgb, projParams_d, projParams_rgb, voxelSize, mu, maxW);
+		else
+			DeIntegrateIntoScene_device<TVoxel, true, true> << <gridSize, cudaBlockSize >> >(localVBA, hashTable, visibleEntryIDs,
+			rgb, rgbImgSize, depth, depthImgSize, M_d, M_rgb, projParams_d, projParams_rgb, voxelSize, mu, maxW);
+	else
+		if (trackingState->requiresFullRendering)
+			DeIntegrateIntoScene_device<TVoxel, false, false> << <gridSize, cudaBlockSize >> >(localVBA, hashTable, visibleEntryIDs,
+			rgb, rgbImgSize, depth, depthImgSize, M_d, M_rgb, projParams_d, projParams_rgb, voxelSize, mu, maxW);
+		else
+			DeIntegrateIntoScene_device<TVoxel, false, true> << <gridSize, cudaBlockSize >> >(localVBA, hashTable, visibleEntryIDs,
+			rgb, rgbImgSize, depth, depthImgSize, M_d, M_rgb, projParams_d, projParams_rgb, voxelSize, mu, maxW);
+}
 ///@brief 从hash table中将该block进行删除，同时释放block对应的VBA entry
 ///@param hashTable 哈希表
 ///@param blockPos block在voxel grid的位置，其实就是hashTable的输入，得到的是在hash entries
@@ -931,7 +995,7 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHHash>::IntegrateInt
 }
 
 // device functions
-
+// 融合操作函数
 template<class TVoxel, bool stopMaxW, bool approximateIntegration>
 __global__ void integrateIntoScene_device(TVoxel *voxelArray, const ITMPlainVoxelArray::ITMVoxelArrayInfo *arrayInfo,
 	const Vector4u *rgb, Vector2i rgbImgSize, const float *depth, Vector2i depthImgSize, Matrix4f M_d, Matrix4f M_rgb, Vector4f projParams_d, 
@@ -1023,6 +1087,42 @@ __global__ void integrateIntoSceneH_device(TVoxel *localVBA, const ITMHashEntry 
 
 	ComputeUpdatedVoxelInfo<TVoxel::hasColorInformation, TVoxel>::compute(localVoxelBlock[locId], pt_model, M_d, projParams_d, M_rgb, projParams_rgb, mu, maxW, depth, depthImgSize, rgb, rgbImgSize);
 }
+
+
+//反融合操作函数，只适用于ITMVoxelBlockHash
+template<class TVoxel, bool stopMaxW, bool approximateIntegration>
+__global__ void DeIntegrateIntoScene_device(TVoxel *localVBA, const ITMHashEntry *hashTable, int *visibleEntryIDs,
+	const Vector4u *rgb, Vector2i rgbImgSize, const float *depth, Vector2i depthImgSize, Matrix4f M_d, Matrix4f M_rgb, Vector4f projParams_d, 
+	Vector4f projParams_rgb, float _voxelSize, float mu, int maxW)
+{
+	Vector3i globalPos;
+	int entryId = visibleEntryIDs[blockIdx.x];
+
+	const ITMHashEntry &currentHashEntry = hashTable[entryId];
+
+	if (currentHashEntry.ptr < 0) return;
+
+	globalPos = currentHashEntry.pos.toInt() * SDF_BLOCK_SIZE;
+
+	TVoxel *localVoxelBlock = &(localVBA[currentHashEntry.ptr * SDF_BLOCK_SIZE3]);
+
+	int x = threadIdx.x, y = threadIdx.y, z = threadIdx.z;
+
+	Vector4f pt_model; int locId;
+
+	locId = x + y * SDF_BLOCK_SIZE + z * SDF_BLOCK_SIZE * SDF_BLOCK_SIZE;
+
+	if (stopMaxW) if (localVoxelBlock[locId].w_depth == maxW) return;
+	if (approximateIntegration) if (localVoxelBlock[locId].w_depth != 0) return;
+
+	pt_model.x = (float)(globalPos.x + x) * _voxelSize;
+	pt_model.y = (float)(globalPos.y + y) * _voxelSize;
+	pt_model.z = (float)(globalPos.z + z) * _voxelSize;
+	pt_model.w = 1.0f;
+
+	ComputeDeUpdatedVoxelInfo<TVoxel::hasColorInformation,TVoxel>::Decompute(localVoxelBlock[locId], pt_model, M_d, projParams_d, M_rgb, projParams_rgb, mu, maxW, depth, depthImgSize, rgb, rgbImgSize);
+}
+
 
 /// @brief 检查深度图x,y对应的voxel block是否已经被分配(通过检查hashEntry)，若已经被分配，是否需要将其可见性进行更新
 __global__ void buildHashAllocAndVisibleType_device(uchar *entriesAllocType, uchar *entriesVisibleType, Vector4s *blockCoords, const float *depth,

@@ -79,6 +79,14 @@ void ITMDenseMapper<TVoxel,TIndex>::ProcessFrame(const ITMView *view, const ITMT
 // 	}
 }
 
+/// @brief 该函数主要是融合操作，先通过指定的位姿及其深度图，然后从地图中将对应的voxel sdf值进行反操作，接着释放掉那些sdf值为0的voxel
+/// TODO 对sdf值为0的voxel进行释放，节省内存
+template<class TVoxel, class TIndex>
+void ITMDenseMapper<TVoxel, TIndex>::DeProcessFrame(const ITMView *view, const ITMTrackingState *trackingState, ITMScene<TVoxel,TIndex> *scene, ITMRenderState *renderState)
+{
+     sceneRecoEngine->DeIntegrateIntoScene(scene, view, trackingState, renderState);
+}
+
 template<class TVoxel, class TIndex>
 void ITMDenseMapper<TVoxel,TIndex>::Decay(
      ITMScene<TVoxel,TIndex> *scene,

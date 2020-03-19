@@ -60,7 +60,6 @@ _CPU_AND_GPU_CODE_ inline float computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel) &
 	return eta;
 }
 
-
 template<class TVoxel>
 _CPU_AND_GPU_CODE_ inline void computeUpdatedVoxelColorInfo(DEVICEPTR(TVoxel) &voxel, const THREADPTR(Vector4f) & pt_model, const CONSTPTR(Matrix4f) & M_rgb,
 	const CONSTPTR(Vector4f) & projParams_rgb, float mu, uchar maxW, float eta, const CONSTPTR(Vector4u) *rgb, const CONSTPTR(Vector2i) & imgSize)
@@ -88,6 +87,92 @@ _CPU_AND_GPU_CODE_ inline void computeUpdatedVoxelColorInfo(DEVICEPTR(TVoxel) &v
 
 	newC = oldC * oldW + rgb_measure * newW;
 	newW = oldW + newW;
+	newC /= newW;
+	newW = MIN(newW, maxW);
+
+	buffV3u = TO_UCHAR3(newC * 255.0f);
+
+	voxel.clr = buffV3u;
+	voxel.w_color = (uchar)newW;
+}
+
+///@brief 对TSDF模型中的sdf值进行反融合，并不是深度值
+template<class TVoxel>
+_CPU_AND_GPU_CODE_ inline float computeDeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel) &voxel, const THREADPTR(Vector4f) & pt_model, const CONSTPTR(Matrix4f) & M_d,
+	const CONSTPTR(Vector4f) & projParams_d, float mu, int maxW, const CONSTPTR(float) *depth, const CONSTPTR(Vector2i) & imgSize)
+{
+	Vector4f pt_camera; Vector2f pt_image;
+	float depth_measure, eta, oldF, newF;
+	int oldW, newW;
+
+	// project point into image (depth image? hansry)
+	// 将世界坐标系下的空间点转到当前帧depth坐标系下
+	pt_camera = M_d * pt_model;
+	if (pt_camera.z <= 0) return -1;
+
+	pt_image.x = projParams_d.x * pt_camera.x / pt_camera.z + projParams_d.z;
+	pt_image.y = projParams_d.y * pt_camera.y / pt_camera.z + projParams_d.w;
+	if ((pt_image.x < 1) || (pt_image.x > imgSize.x - 2) || (pt_image.y < 1) || (pt_image.y > imgSize.y - 2)) return -1;
+
+	// get measured depth from image
+	// 从深度图获得对应的空间点坐标(空间点投影到像平面上)
+	depth_measure = depth[(int)(pt_image.x + 0.5f) + (int)(pt_image.y + 0.5f) * imgSize.x];
+	if (depth_measure <= 0.0) return -1;
+
+	// check whether voxel needs updating
+	// depth_measure为当前视角下传感器测量的深度值，pt_camera.z为当前视角光心到对应网格点的距离，从理论来说俩者应该一致
+	eta = depth_measure - pt_camera.z;
+	
+	// 若depth_measure小于pt_camera.z太多，则不更新网格的tsdf值
+	// mu即为max truncation
+	if (eta < -mu) return eta;
+
+	// compute updated SDF value and reliability
+	oldF = TVoxel::SDF_valueToFloat(voxel.sdf); oldW = voxel.w_depth;
+
+	newF = MIN(1.0f, eta / mu);
+	//新的sdf值的权重为1.0
+	newW = 1;
+
+	newF = oldW * oldF - newW * newF;
+	newW = oldW - newW;
+	newF /= newW;
+	newW = MIN(newW, maxW);
+
+	// write back
+	voxel.sdf = TVoxel::SDF_floatToValue(newF);
+	voxel.w_depth = newW;
+
+	return eta;
+}
+
+template<class TVoxel>
+_CPU_AND_GPU_CODE_ inline void computeDeUpdatedVoxelColorInfo(DEVICEPTR(TVoxel) &voxel, const THREADPTR(Vector4f) & pt_model, const CONSTPTR(Matrix4f) & M_rgb,
+	const CONSTPTR(Vector4f) & projParams_rgb, float mu, uchar maxW, float eta, const CONSTPTR(Vector4u) *rgb, const CONSTPTR(Vector2i) & imgSize)
+{
+	Vector4f pt_camera; Vector2f pt_image;
+	Vector3f rgb_measure, oldC, newC; Vector3u buffV3u;
+	float newW, oldW;
+
+	buffV3u = voxel.clr;
+	oldW = (float)voxel.w_color;
+
+	oldC = TO_FLOAT3(buffV3u) / 255.0f;
+	newC = oldC;
+
+	pt_camera = M_rgb * pt_model;
+
+	pt_image.x = projParams_rgb.x * pt_camera.x / pt_camera.z + projParams_rgb.z;
+	pt_image.y = projParams_rgb.y * pt_camera.y / pt_camera.z + projParams_rgb.w;
+
+	if ((pt_image.x < 1) || (pt_image.x > imgSize.x - 2) || (pt_image.y < 1) || (pt_image.y > imgSize.y - 2)) return;
+
+	rgb_measure = TO_VECTOR3(interpolateBilinear(rgb, pt_image, imgSize)) / 255.0f;
+	//rgb_measure = rgb[(int)(pt_image.x + 0.5f) + (int)(pt_image.y + 0.5f) * imgSize.x].toVector3().toFloat() / 255.0f;
+	newW = 1;
+
+	newC = oldC * oldW - rgb_measure * newW;
+	newW = oldW - newW;
 	newC /= newW;
 	newW = MIN(newW, maxW);
 
@@ -125,6 +210,37 @@ struct ComputeUpdatedVoxelInfo<true, TVoxel> {
 		float eta = computeUpdatedVoxelDepthInfo(voxel, pt_model, M_d, projParams_d, mu, maxW, depth, imgSize_d);
 		if ((eta > mu) || (fabs(eta / mu) > 0.25f)) return;
 		computeUpdatedVoxelColorInfo(voxel, pt_model, M_rgb, projParams_rgb, mu, maxW, eta, rgb, imgSize_rgb);
+	}
+};
+
+//反融合操作
+template<bool hasColor, class TVoxel> struct ComputeDeUpdatedVoxelInfo;
+
+template<class TVoxel>
+struct ComputeDeUpdatedVoxelInfo<false, TVoxel> {
+	_CPU_AND_GPU_CODE_ static void Decompute(DEVICEPTR(TVoxel) & voxel, const THREADPTR(Vector4f) & pt_model,
+		const CONSTPTR(Matrix4f) & M_d, const CONSTPTR(Vector4f) & projParams_d,
+		const CONSTPTR(Matrix4f) & M_rgb, const CONSTPTR(Vector4f) & projParams_rgb,
+		float mu, int maxW,
+		const CONSTPTR(float) *depth, const CONSTPTR(Vector2i) & imgSize_d,
+		const CONSTPTR(Vector4u) *rgb, const CONSTPTR(Vector2i) & imgSize_rgb)
+	{
+		computeDeUpdatedVoxelDepthInfo(voxel, pt_model, M_d, projParams_d, mu, maxW, depth, imgSize_d);
+	}
+};
+
+template<class TVoxel>
+struct ComputeDeUpdatedVoxelInfo<true, TVoxel> {
+	_CPU_AND_GPU_CODE_ static void Decompute(DEVICEPTR(TVoxel) & voxel, const THREADPTR(Vector4f) & pt_model,
+		const THREADPTR(Matrix4f) & M_d, const THREADPTR(Vector4f) & projParams_d,
+		const THREADPTR(Matrix4f) & M_rgb, const THREADPTR(Vector4f) & projParams_rgb,
+		float mu, int maxW,
+		const CONSTPTR(float) *depth, const CONSTPTR(Vector2i) & imgSize_d,
+		const CONSTPTR(Vector4u) *rgb, const THREADPTR(Vector2i) & imgSize_rgb)
+	{
+		float eta = computeDeUpdatedVoxelDepthInfo(voxel, pt_model, M_d, projParams_d, mu, maxW, depth, imgSize_d);
+		if ((eta > mu) || (fabs(eta / mu) > 0.25f)) return;
+		computeDeUpdatedVoxelColorInfo(voxel, pt_model, M_rgb, projParams_rgb, mu, maxW, eta, rgb, imgSize_rgb);
 	}
 };
 
