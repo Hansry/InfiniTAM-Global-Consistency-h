@@ -4,6 +4,7 @@
 
 #include "../../ITMSceneReconstructionEngine.h"
 #include <queue>
+#include <map>
 
 namespace ITMLib
 {
@@ -14,6 +15,12 @@ namespace ITMLib
 		   size_t frameIdx;
 		   ORUtils::MemoryBlock<int> *blockCoords;
 		};
+		
+		struct DefusionVisibleBlockInfo{
+		   size_t count;
+		   ORUtils::MemoryBlock<int> *blockCoords;
+		};
+		
 		
 		template<class TVoxel, class TIndex>
 		class ITMSceneReconstructionEngine_CUDA : public ITMSceneReconstructionEngine < TVoxel, TIndex >
@@ -30,6 +37,7 @@ namespace ITMLib
 			
 			//用来保存最近可见的block Id的列表，用于decay
 			std::queue<VisibleBlockInfo> frameVisibleBlocks;
+			std::map<double, DefusionVisibleBlockInfo> mDefusionBlockDataBase;
 			
 			int *lastFreeBlockId_device;
 			//用来防止从hash table删除元素时造成的数据竞争（data races）
@@ -65,8 +73,7 @@ namespace ITMLib
 			void IntegrateIntoScene(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, const ITMView *view, const ITMTrackingState *trackingState,
 				const ITMRenderState *renderState);
 			
-			void DeIntegrateIntoScene(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, const ITMView *view, const ITMTrackingState *trackingState, 
-				const ITMRenderState *renderState);
+			void DeIntegrateIntoScene(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, const ITMView *view, const ITMTrackingState *trackingState);
 			
 			void Decay(ITMScene<TVoxel,ITMVoxelBlockHash> *scene,
 			           const ITMRenderState *renderState,

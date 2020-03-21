@@ -114,6 +114,11 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel,ITMVoxelBlockHash>::ResetScene(ITM
 		frameVisibleBlocks.pop();
 	}
 	
+	for(std::map<double, DefusionVisibleBlockInfo>::iterator iter=mDefusionBlockDataBase.begin(); iter!=mDefusionBlockDataBase.end(); iter++){
+	    delete iter->second.blockCoords;
+	    mDefusionBlockDataBase.erase(iter);
+	}
+	
 	TVoxel *voxelBlocks_ptr = scene->localVBA.GetVoxelBlocks();
 	memsetKernel<TVoxel>(voxelBlocks_ptr, TVoxel(), numBlocks * blockSize);
 	int *vbaAllocationList_ptr = scene->localVBA.GetAllocationList();
@@ -246,6 +251,7 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::AllocateScene
 	//Keep track of the visible blocks, which will be used later by the voxel decay mechanism
 	ORUtils::MemoryBlock<int> *visibleEntryIDsCopy = nullptr;
 	if(visibleBlockByteCount > 0){
+	  ///在这里会进行内存的分配
 	  ///分配与当前可视的voxel block相同的CUDA内存
 	  visibleEntryIDsCopy = new ORUtils::MemoryBlock<int>(visibleBlockByteCount, MEMORYDEVICE_CUDA);
 	  ITMSafeCall(cudaMemcpy(visibleEntryIDsCopy->GetData(MEMORYDEVICE_CUDA),
@@ -253,6 +259,23 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::AllocateScene
 			         visibleBlockByteCount,
 			         cudaMemcpyDeviceToDevice));
 	}
+	
+	///这里主要是为了存储每一个融合帧的可见视图，以进行反融合操作
+	ORUtils::MemoryBlock<int> *visibleEntryIDsDefusion = nullptr;
+	if(visibleBlockByteCount > 0){
+	  ///在这里会进行内存的分配
+	  ///分配与当前可视的voxel block相同的CUDA内存
+	  visibleEntryIDsDefusion = new ORUtils::MemoryBlock<int>(visibleBlockByteCount, MEMORYDEVICE_CUDA);
+	  ITMSafeCall(cudaMemcpy(visibleEntryIDsDefusion->GetData(MEMORYDEVICE_CUDA),
+	                         visibleEntryIDs,
+			         visibleBlockByteCount,
+			         cudaMemcpyDeviceToDevice));
+	}
+	
+	///存储了可见block的数量以及EntryId
+	DefusionVisibleBlockInfo defuvisibleBlockInfo = {visibleBlockCount, visibleEntryIDsDefusion};
+	
+	mDefusionBlockDataBase[view->mTimeStamp] = defuvisibleBlockInfo;
 	
 	VisibleBlockInfo visibleBlockInfo = {
 	    visibleBlockCount, //count
@@ -327,6 +350,9 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::IntegrateInto
 
 	///M_d为当前帧坐标系到世界坐标系下的变换矩阵Tcw,即深度图片的坐标系到世界坐标系下的变换矩阵Td,w
 	M_d = trackingState->pose_d->GetM();
+	
+//         std::cout << "ITMSceneReconstructionEngine_CUDA.cu 354: M_d: " <<  M_d << std::endl;
+
 	if (TVoxel::hasColorInformation) {
 	  //Note that:calib.trafo_rgb_to_depth指的是将RGB坐标系下的空间点转到Depth坐标系下，从坐标系转换角度来看，应该是Tdepth->rgb,即Depth坐标系到RGB坐标系的变换
 	  //即calib.trafo_rgb_to_depth.calib_inv = Trgb,d (这里指坐标系的变换),因此Trgb,w = Trgb,d * Td,w
@@ -367,7 +393,7 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::IntegrateInto
 /// @brief 通过融合给定视角的深度和颜色信息来更新voxel blocks
 template<class TVoxel>
 void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::DeIntegrateIntoScene(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, const ITMView *view,
-	const ITMTrackingState *trackingState, const ITMRenderState *renderState)
+	const ITMTrackingState *trackingState)
 {
 	Vector2i rgbImgSize = view->rgb->noDims;
 	Vector2i depthImgSize = view->depth->noDims;
@@ -375,16 +401,17 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::DeIntegrateIn
 
 	Matrix4f M_d, M_rgb;
 	Vector4f projParams_d, projParams_rgb;
-
-	ITMRenderState_VH *renderState_vh = (ITMRenderState_VH*)renderState;
 	
 	//如果当前视角没有任何有用的数据，则没必要进行内存分配
-	if(renderState_vh->noVisibleEntries == 0){
-	  return;
-	}
+	std::map<double, DefusionVisibleBlockInfo>::iterator iter;
+	iter = mDefusionBlockDataBase.find(view->mTimeStamp);
+	if(iter == mDefusionBlockDataBase.end()) return;
+	if(iter->second.count == 0) return;
 
 	///M_d为当前帧坐标系到世界坐标系下的变换矩阵Tcw,即深度图片的坐标系到世界坐标系下的变换矩阵Td,w
 	M_d = trackingState->pose_d->GetM();
+	
+// 	std::cout << "ITMSceneReconstructionEngine_CUDA.cu 411: M_d: " <<  M_d << std::endl;
 	if (TVoxel::hasColorInformation) {
 	  //Note that:calib.trafo_rgb_to_depth指的是将RGB坐标系下的空间点转到Depth坐标系下，从坐标系转换角度来看，应该是Tdepth->rgb,即Depth坐标系到RGB坐标系的变换
 	  //即calib.trafo_rgb_to_depth.calib_inv = Trgb,d (这里指坐标系的变换),因此Trgb,w = Trgb,d * Td,w
@@ -399,11 +426,14 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::DeIntegrateIn
 	Vector4u *rgb = view->rgb->GetData(MEMORYDEVICE_CUDA);
 	TVoxel *localVBA = scene->localVBA.GetVoxelBlocks();
 	ITMHashEntry *hashTable = scene->index.GetEntries();
-
-	int *visibleEntryIDs = renderState_vh->GetVisibleEntryIDs();
+        
+// 	std::cout << "ITMSceneReconstructionEngine_CUDA 430: "<< view->mTimeStamp << std::endl;
+	int *visibleEntryIDs = mDefusionBlockDataBase[view->mTimeStamp].blockCoords->GetData(MEMORYDEVICE_CUDA);
 
 	dim3 cudaBlockSize(SDF_BLOCK_SIZE, SDF_BLOCK_SIZE, SDF_BLOCK_SIZE);
-	dim3 gridSize(renderState_vh->noVisibleEntries);
+	dim3 gridSize(static_cast<uint32_t>(mDefusionBlockDataBase[view->mTimeStamp].count));
+	
+// 	printf("%s%d", "ITMSceneReconstructionEngine_CUDA.cu 430: ", static_cast<uint32_t>(mDefusionBlockDataBase[view->mTimeStamp].count));
 
 	if (scene->sceneParams->stopIntegratingAtMaxW)
 		if (trackingState->requiresFullRendering)
@@ -419,6 +449,8 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::DeIntegrateIn
 		else
 			DeIntegrateIntoScene_device<TVoxel, false, true> << <gridSize, cudaBlockSize >> >(localVBA, hashTable, visibleEntryIDs,
 			rgb, rgbImgSize, depth, depthImgSize, M_d, M_rgb, projParams_d, projParams_rgb, voxelSize, mu, maxW);
+	delete mDefusionBlockDataBase[view->mTimeStamp].blockCoords;
+	mDefusionBlockDataBase.erase(iter);
 }
 ///@brief 从hash table中将该block进行删除，同时释放block对应的VBA entry
 ///@param hashTable 哈希表
@@ -1026,6 +1058,7 @@ __global__ void integrateIntoScene_device(TVoxel *localVBA, const ITMHashEntry *
 	Vector4f projParams_rgb, float _voxelSize, float mu, int maxW)
 {
 	Vector3i globalPos;
+	
 	int entryId = visibleEntryIDs[blockIdx.x];
 
 	const ITMHashEntry &currentHashEntry = hashTable[entryId];
@@ -1059,6 +1092,7 @@ __global__ void integrateIntoSceneH_device(TVoxel *localVBA, const ITMHashEntry 
 	Vector4f projParams_d, Vector4f projParams_rgb, const ITMVoxelBlockHHash::IndexData *indexData, float smallestVoxelSize, float mu, int maxW)
 {
 	Vector3i globalPos;
+		
 	int entryId = liveEntryIDs[blockIdx.x];
 	const ITMHashEntry &currentHashEntry = hashTable[entryId];
 
@@ -1096,6 +1130,7 @@ __global__ void DeIntegrateIntoScene_device(TVoxel *localVBA, const ITMHashEntry
 	Vector4f projParams_rgb, float _voxelSize, float mu, int maxW)
 {
 	Vector3i globalPos;
+	
 	int entryId = visibleEntryIDs[blockIdx.x];
 
 	const ITMHashEntry &currentHashEntry = hashTable[entryId];
@@ -1315,7 +1350,8 @@ __global__ void buildVisibleList_device(ITMHashEntry *hashTable, ITMHashSwapStat
 
 	unsigned char hashVisibleType = entriesVisibleType[targetIdx];
 	const ITMHashEntry & hashEntry = hashTable[targetIdx];
-
+	
+	//hashVisibleType == 3是上一帧可见的标记,判断上一帧可见的voxel block在当前视角下是否依旧可见
 	if (hashVisibleType == 3)
 	{
 		bool isVisibleEnlarged, isVisible;

@@ -354,7 +354,7 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::Decay(
 
 template<class TVoxel>
 void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::DeIntegrateIntoScene(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, const ITMView *view,
-	const ITMTrackingState *trackingState, const ITMRenderState *renderState)
+	const ITMTrackingState *trackingState)
 {
        throw std::runtime_error("DeIntegrateIntoScene is not yet supported on the CPU.");
 }

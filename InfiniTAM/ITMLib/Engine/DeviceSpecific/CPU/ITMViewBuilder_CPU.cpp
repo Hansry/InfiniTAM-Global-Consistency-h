@@ -11,7 +11,7 @@ using namespace ORUtils;
 ITMViewBuilder_CPU::ITMViewBuilder_CPU(const ITMRGBDCalib *calib):ITMViewBuilder(calib) { }
 ITMViewBuilder_CPU::~ITMViewBuilder_CPU(void) { }
 
-void ITMViewBuilder_CPU::UpdateView(ITMView **view_ptr, ITMUChar4Image *rgbImage, ITMShortImage *rawDepthImage, bool useBilateralFilter, bool modelSensorNoise)
+void ITMViewBuilder_CPU::UpdateView(ITMView **view_ptr, ITMUChar4Image *rgbImage, ITMShortImage *rawDepthImage, double timestamp, bool useBilateralFilter, bool modelSensorNoise)
 { 
 	if (*view_ptr == NULL)
 	{
@@ -74,7 +74,7 @@ void ITMViewBuilder_CPU::UpdateView(ITMView **view_ptr, ITMUChar4Image *rgbImage
 	view->depth->UpdateDeviceFromHost();
 }
 
-void ITMViewBuilder_CPU::UpdateView(ITMView **view_ptr, ITMUChar4Image *rgbImage, ITMShortImage *depthImage, bool useBilateralFilter, ITMIMUMeasurement *imuMeasurement)
+void ITMViewBuilder_CPU::UpdateView(ITMView **view_ptr, ITMUChar4Image *rgbImage, ITMShortImage *depthImage, double timestamp, bool useBilateralFilter, ITMIMUMeasurement *imuMeasurement)
 {
 	if (*view_ptr == NULL)
 	{
@@ -88,7 +88,7 @@ void ITMViewBuilder_CPU::UpdateView(ITMView **view_ptr, ITMUChar4Image *rgbImage
 	ITMViewIMU* imuView = (ITMViewIMU*)(*view_ptr);
 	imuView->imu->SetFrom(imuMeasurement);
 
-	this->UpdateView(view_ptr, rgbImage, depthImage, useBilateralFilter);
+	this->UpdateView(view_ptr, rgbImage, depthImage, timestamp, useBilateralFilter);
 }
 
 void ITMViewBuilder_CPU::ConvertDisparityToDepth(ITMFloatImage *depth_out, const ITMShortImage *depth_in, const ITMIntrinsics *depthIntrinsics,

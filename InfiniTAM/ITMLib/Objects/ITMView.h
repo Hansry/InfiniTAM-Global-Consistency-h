@@ -32,12 +32,15 @@ namespace ITMLib
 			/// uncertainty (std) in each pixel of depth value based on sensor noise model
 			/// allocated when needed
 			ITMFloatImage *depthUncertainty;
+			
+			double mTimeStamp;
 
 			ITMView(const ITMRGBDCalib *calibration, Vector2i imgSize_rgb, Vector2i imgSize_d, bool useGPU)
 			{
 				this->calib = new ITMRGBDCalib(*calibration);
 				this->rgb = new ITMUChar4Image(imgSize_rgb, true, useGPU);
 				this->depth = new ITMFloatImage(imgSize_d, true, useGPU);
+				this->mTimeStamp = 0.0;
 				this->depthNormal = NULL;
 				this->depthUncertainty = NULL;
 			}

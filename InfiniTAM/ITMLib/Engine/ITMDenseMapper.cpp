@@ -84,7 +84,8 @@ void ITMDenseMapper<TVoxel,TIndex>::ProcessFrame(const ITMView *view, const ITMT
 template<class TVoxel, class TIndex>
 void ITMDenseMapper<TVoxel, TIndex>::DeProcessFrame(const ITMView *view, const ITMTrackingState *trackingState, ITMScene<TVoxel,TIndex> *scene, ITMRenderState *renderState)
 {
-     sceneRecoEngine->DeIntegrateIntoScene(scene, view, trackingState, renderState);
+     voxelBlockOpEngine->SplitAndMerge(scene, renderState);
+     sceneRecoEngine->DeIntegrateIntoScene(scene, view, trackingState);
 }
 
 template<class TVoxel, class TIndex>

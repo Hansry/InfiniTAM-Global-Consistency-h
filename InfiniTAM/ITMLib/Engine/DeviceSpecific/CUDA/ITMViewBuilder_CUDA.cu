@@ -30,7 +30,7 @@ __global__ void ComputeNormalAndWeight_device(const float* depth_in, Vector4f* n
 //
 //---------------------------------------------------------------------------
 
-void ITMViewBuilder_CUDA::UpdateView(ITMView **view_ptr, ITMUChar4Image *rgbImage, ITMShortImage *rawDepthImage, bool useBilateralFilter, bool modelSensorNoise)
+void ITMViewBuilder_CUDA::UpdateView(ITMView **view_ptr, ITMUChar4Image *rgbImage, ITMShortImage *rawDepthImage, double timestamp, bool useBilateralFilter, bool modelSensorNoise)
 {
 	if (*view_ptr == NULL)
 	{
@@ -48,6 +48,9 @@ void ITMViewBuilder_CUDA::UpdateView(ITMView **view_ptr, ITMUChar4Image *rgbImag
 	}
 
 	ITMView *view = *view_ptr;
+	
+	///用来更新view中的timestamp
+	view->mTimeStamp = timestamp;
 
 	view->rgb->SetFrom(rgbImage, MemoryBlock<Vector4u>::CPU_TO_CUDA);
 	this->shortImage->SetFrom(rawDepthImage, MemoryBlock<short>::CPU_TO_CUDA);
@@ -92,7 +95,7 @@ void ITMViewBuilder_CUDA::UpdateView(ITMView **view_ptr, ITMUChar4Image *rgbImag
 	view->depth->UpdateDeviceFromHost();
 }
 
-void ITMViewBuilder_CUDA::UpdateView(ITMView **view_ptr, ITMUChar4Image *rgbImage, ITMShortImage *depthImage, bool useBilateralFilter, ITMIMUMeasurement *imuMeasurement)
+void ITMViewBuilder_CUDA::UpdateView(ITMView **view_ptr, ITMUChar4Image *rgbImage, ITMShortImage *depthImage, double timestamp, bool useBilateralFilter, ITMIMUMeasurement *imuMeasurement)
 {
 	if (*view_ptr == NULL) 
 	{
@@ -106,7 +109,7 @@ void ITMViewBuilder_CUDA::UpdateView(ITMView **view_ptr, ITMUChar4Image *rgbImag
 	ITMViewIMU* imuView = (ITMViewIMU*)(*view_ptr);
 	imuView->imu->SetFrom(imuMeasurement);
 
-	this->UpdateView(view_ptr, rgbImage, depthImage, useBilateralFilter);
+	this->UpdateView(view_ptr, rgbImage, depthImage, timestamp, useBilateralFilter);
 }
 
 void ITMViewBuilder_CUDA::ConvertDisparityToDepth(ITMFloatImage *depth_out, const ITMShortImage *depth_in, const ITMIntrinsics *depthIntrinsics,

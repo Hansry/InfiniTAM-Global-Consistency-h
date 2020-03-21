@@ -57,8 +57,7 @@ namespace ITMLib
 				const ITMRenderState *renderState) = 0;
 				
 			///@brief 反融合操作
-			virtual void DeIntegrateIntoScene(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, const ITMView *view, const ITMTrackingState *trackingState, 
-				const ITMRenderState *renderState) = 0;
+			virtual void DeIntegrateIntoScene(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, const ITMView *view, const ITMTrackingState *trackingState) = 0;
 
 			ITMSceneReconstructionEngine(void) { }
 			virtual ~ITMSceneReconstructionEngine(void) { }

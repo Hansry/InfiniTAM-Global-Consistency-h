@@ -133,15 +133,17 @@ _CPU_AND_GPU_CODE_ inline float computeDeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)
 	newF = MIN(1.0f, eta / mu);
 	//新的sdf值的权重为1.0
 	newW = 1;
-
+	
+// 	printf("%s%d", "before defusion: ", voxel.w_depth);
 	newF = oldW * oldF - newW * newF;
 	newW = oldW - newW;
 	newF /= newW;
 	newW = MIN(newW, maxW);
-
+	
 	// write back
 	voxel.sdf = TVoxel::SDF_floatToValue(newF);
 	voxel.w_depth = newW;
+// 	printf("%s%d", "after defusion: ", voxel.w_depth);
 
 	return eta;
 }

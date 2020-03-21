@@ -28,8 +28,7 @@ namespace ITMLib
 			void IntegrateIntoScene(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, const ITMView *view, const ITMTrackingState *trackingState,
 				const ITMRenderState *renderState);
 			
-			void DeIntegrateIntoScene(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, const ITMView *view, const ITMTrackingState *trackingState,
-				const ITMRenderState *renderState) override;
+			void DeIntegrateIntoScene(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, const ITMView *view, const ITMTrackingState *trackingState) override;
 			
 		        void Decay(ITMScene<TVoxel, ITMVoxelBlockHash> *scene,
 		                   const ITMRenderState *renderState,
