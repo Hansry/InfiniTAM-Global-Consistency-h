@@ -430,7 +430,9 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::DeIntegrateIn
 // 	std::cout << "ITMSceneReconstructionEngine_CUDA 430: "<< view->mTimeStamp << std::endl;
 	int *visibleEntryIDs = mDefusionBlockDataBase[view->mTimeStamp].blockCoords->GetData(MEMORYDEVICE_CUDA);
 
+	//blockDim是一个dim3类型，表示线程块的大小
 	dim3 cudaBlockSize(SDF_BLOCK_SIZE, SDF_BLOCK_SIZE, SDF_BLOCK_SIZE);
+	//gridDim是一个dim3类型，表示网格的大小，一个网格中通常有多个线程块
 	dim3 gridSize(static_cast<uint32_t>(mDefusionBlockDataBase[view->mTimeStamp].count));
 	
 // 	printf("%s%d", "ITMSceneReconstructionEngine_CUDA.cu 430: ", static_cast<uint32_t>(mDefusionBlockDataBase[view->mTimeStamp].count));
@@ -1131,6 +1133,7 @@ __global__ void DeIntegrateIntoScene_device(TVoxel *localVBA, const ITMHashEntry
 {
 	Vector3i globalPos;
 	
+	//blockIdx是一个unit3类型，表示一个线程块的索引，一个线程块中通常有多个线程，线程块的数量由gridSize来确定
 	int entryId = visibleEntryIDs[blockIdx.x];
 
 	const ITMHashEntry &currentHashEntry = hashTable[entryId];
@@ -1141,6 +1144,8 @@ __global__ void DeIntegrateIntoScene_device(TVoxel *localVBA, const ITMHashEntry
 
 	TVoxel *localVoxelBlock = &(localVBA[currentHashEntry.ptr * SDF_BLOCK_SIZE3]);
 
+	//threadIdx是一个unit3类型，表示一个线程的索引
+	//由于cudaBlockSize大小为8x8x8，代表一个线程块中线程的数量，因此一个线程块中有512个线程，与localBA的大小基本上差不多
 	int x = threadIdx.x, y = threadIdx.y, z = threadIdx.z;
 
 	Vector4f pt_model; int locId;
