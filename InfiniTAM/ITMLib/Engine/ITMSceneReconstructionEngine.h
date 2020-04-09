@@ -17,6 +17,13 @@ namespace ITMLib
 {
 	namespace Engine
 	{
+	        //用来判断是否对测量进行加权
+	        struct WeightParams {
+		   bool depthWeighting = false;
+		   int maxNewW = 10;
+		   int maxDistance = 100;
+		};
+		
 		/** \brief
 		    Interface to engines implementing the main KinectFusion
 		    depth integration process.
@@ -28,6 +35,9 @@ namespace ITMLib
 		template<class TVoxel, class TIndex>
 		class ITMSceneReconstructionEngine
 		{
+		private:
+		        WeightParams fusionWeightParams;
+		       
 		public:
 			/** Clear and reset a scene to set up a new empty
 			    one.
@@ -49,6 +59,14 @@ namespace ITMLib
 				
 			///@brief 返回被decayed掉（释放掉）的voxel block的个数
 			virtual size_t GetDecayedBlockCount() = 0;
+			
+			virtual void SetFusionWeightParams(const WeightParams &weightParams) {
+				this->fusionWeightParams = weightParams;
+			}
+			
+			WeightParams GetFusionWeightParams() {
+			      return fusionWeightParams;
+			}
 
 			/** Update the voxel blocks by integrating depth and
 			    possibly colour information from the given view.

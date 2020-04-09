@@ -5,15 +5,18 @@
 #include "../../Utils/ITMLibDefines.h"
 #include "ITMPixelUtils.h"
 #include "ITMRepresentationAccess.h"
+#include "../ITMSceneReconstructionEngine.h"
 
 // Used by the bucket locking when allocating and deleting voxel blocks.
 const int BUCKET_UNLOCKED = 0;
 const int BUCKET_LOCKED = 1;
+static ITMLib::Engine::WeightParams defaultWeightParams;
 
 ///@brief 对TSDF模型中的sdf值进行融合，并不是深度值
 template<class TVoxel>
 _CPU_AND_GPU_CODE_ inline float computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel) &voxel, const THREADPTR(Vector4f) & pt_model, const CONSTPTR(Matrix4f) & M_d,
-	const CONSTPTR(Vector4f) & projParams_d, float mu, int maxW, const CONSTPTR(float) *depth, const CONSTPTR(Vector2i) & imgSize)
+	const CONSTPTR(Vector4f) & projParams_d, float mu, int maxW, const CONSTPTR(float) *depth, const CONSTPTR(Vector2i) & imgSize,
+	ITMLib::Engine::WeightParams weightParams)
 {
 	Vector4f pt_camera; Vector2f pt_image;
 	float depth_measure, eta, oldF, newF;
@@ -45,9 +48,22 @@ _CPU_AND_GPU_CODE_ inline float computeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel) &
 	oldF = TVoxel::SDF_valueToFloat(voxel.sdf); oldW = voxel.w_depth;
 
 	newF = MIN(1.0f, eta / mu);
-	//新的sdf值的权重为1.0
-	newW = 1;
-
+	
+	if(weightParams.depthWeighting){
+	  int maxNewW = weightParams.maxNewW;
+	  newW = (int)((float)weightParams.maxDistance / depth_measure + 0.5);
+// 	  printf("ITMSceneReconstructionEngine 55: %d", newW);
+	  if(newW < 1) {
+	    newW = 1;
+	  }
+	  if(newW > maxNewW) {
+	    newW = maxNewW;
+	  }
+	}
+	else{
+	    newW = 1;//常规的sdf值的权重为1.0 
+	}
+        
 	newF = oldW * oldF + newW * newF;
 	newW = oldW + newW;
 	newF /= newW;
@@ -99,7 +115,7 @@ _CPU_AND_GPU_CODE_ inline void computeUpdatedVoxelColorInfo(DEVICEPTR(TVoxel) &v
 ///@brief 对TSDF模型中的sdf值进行反融合，并不是深度值
 template<class TVoxel>
 _CPU_AND_GPU_CODE_ inline float computeDeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel) &voxel, const THREADPTR(Vector4f) & pt_model, const CONSTPTR(Matrix4f) & M_d,
-	const CONSTPTR(Vector4f) & projParams_d, float mu, int maxW, const CONSTPTR(float) *depth, const CONSTPTR(Vector2i) & imgSize)
+	const CONSTPTR(Vector4f) & projParams_d, float mu, int maxW, const CONSTPTR(float) *depth, const CONSTPTR(Vector2i) & imgSize, ITMLib::Engine::WeightParams weightParams)
 {
 	Vector4f pt_camera; Vector2f pt_image;
 	float depth_measure, eta, oldF, newF;
@@ -131,8 +147,21 @@ _CPU_AND_GPU_CODE_ inline float computeDeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)
 	oldF = TVoxel::SDF_valueToFloat(voxel.sdf); oldW = voxel.w_depth;
 
 	newF = MIN(1.0f, eta / mu);
-	//新的sdf值的权重为1.0
-	newW = 1;
+	
+        if(weightParams.depthWeighting){
+	  int maxNewW = weightParams.maxNewW;
+	  newW = (int)((float)weightParams.maxDistance / depth_measure + 0.5);
+// 	  printf("ITMSceneReconstructionEngine 55: %d", newW);
+	  if(newW < 1) {
+	    newW = 1;
+	  }
+	  if(newW > maxNewW) {
+	    newW = maxNewW;
+	  }
+	}
+	else{
+	    newW = 1;//常规的sdf值的权重为1.0 
+	}
 	
 // 	printf("%s%d", "before defusion: ", voxel.w_depth);
 	newF = oldW * oldF - newW * newF;
@@ -194,9 +223,10 @@ struct ComputeUpdatedVoxelInfo<false, TVoxel> {
 		const CONSTPTR(Matrix4f) & M_rgb, const CONSTPTR(Vector4f) & projParams_rgb,
 		float mu, int maxW,
 		const CONSTPTR(float) *depth, const CONSTPTR(Vector2i) & imgSize_d,
-		const CONSTPTR(Vector4u) *rgb, const CONSTPTR(Vector2i) & imgSize_rgb)
+		const CONSTPTR(Vector4u) *rgb, const CONSTPTR(Vector2i) & imgSize_rgb,
+		ITMLib::Engine::WeightParams weightParams = defaultWeightParams)
 	{
-		computeUpdatedVoxelDepthInfo(voxel, pt_model, M_d, projParams_d, mu, maxW, depth, imgSize_d);
+		computeUpdatedVoxelDepthInfo(voxel, pt_model, M_d, projParams_d, mu, maxW, depth, imgSize_d, weightParams);
 	}
 };
 
@@ -207,9 +237,10 @@ struct ComputeUpdatedVoxelInfo<true, TVoxel> {
 		const THREADPTR(Matrix4f) & M_rgb, const THREADPTR(Vector4f) & projParams_rgb,
 		float mu, int maxW,
 		const CONSTPTR(float) *depth, const CONSTPTR(Vector2i) & imgSize_d,
-		const CONSTPTR(Vector4u) *rgb, const THREADPTR(Vector2i) & imgSize_rgb)
+		const CONSTPTR(Vector4u) *rgb, const THREADPTR(Vector2i) & imgSize_rgb,
+		ITMLib::Engine::WeightParams weightParams = defaultWeightParams)
 	{
-		float eta = computeUpdatedVoxelDepthInfo(voxel, pt_model, M_d, projParams_d, mu, maxW, depth, imgSize_d);
+		float eta = computeUpdatedVoxelDepthInfo(voxel, pt_model, M_d, projParams_d, mu, maxW, depth, imgSize_d, weightParams);
 		if ((eta > mu) || (fabs(eta / mu) > 0.25f)) return;
 		computeUpdatedVoxelColorInfo(voxel, pt_model, M_rgb, projParams_rgb, mu, maxW, eta, rgb, imgSize_rgb);
 	}
@@ -225,9 +256,9 @@ struct ComputeDeUpdatedVoxelInfo<false, TVoxel> {
 		const CONSTPTR(Matrix4f) & M_rgb, const CONSTPTR(Vector4f) & projParams_rgb,
 		float mu, int maxW,
 		const CONSTPTR(float) *depth, const CONSTPTR(Vector2i) & imgSize_d,
-		const CONSTPTR(Vector4u) *rgb, const CONSTPTR(Vector2i) & imgSize_rgb)
+		const CONSTPTR(Vector4u) *rgb, const CONSTPTR(Vector2i) & imgSize_rgb, ITMLib::Engine::WeightParams weightParams = defaultWeightParams)
 	{
-		computeDeUpdatedVoxelDepthInfo(voxel, pt_model, M_d, projParams_d, mu, maxW, depth, imgSize_d);
+		computeDeUpdatedVoxelDepthInfo(voxel, pt_model, M_d, projParams_d, mu, maxW, depth, imgSize_d, weightParams);
 	}
 };
 
@@ -238,9 +269,9 @@ struct ComputeDeUpdatedVoxelInfo<true, TVoxel> {
 		const THREADPTR(Matrix4f) & M_rgb, const THREADPTR(Vector4f) & projParams_rgb,
 		float mu, int maxW,
 		const CONSTPTR(float) *depth, const CONSTPTR(Vector2i) & imgSize_d,
-		const CONSTPTR(Vector4u) *rgb, const THREADPTR(Vector2i) & imgSize_rgb)
+		const CONSTPTR(Vector4u) *rgb, const THREADPTR(Vector2i) & imgSize_rgb, ITMLib::Engine::WeightParams weightParams = defaultWeightParams)
 	{
-		float eta = computeDeUpdatedVoxelDepthInfo(voxel, pt_model, M_d, projParams_d, mu, maxW, depth, imgSize_d);
+		float eta = computeDeUpdatedVoxelDepthInfo(voxel, pt_model, M_d, projParams_d, mu, maxW, depth, imgSize_d, weightParams);
 		if ((eta > mu) || (fabs(eta / mu) > 0.25f)) return;
 		computeDeUpdatedVoxelColorInfo(voxel, pt_model, M_rgb, projParams_rgb, mu, maxW, eta, rgb, imgSize_rgb);
 	}

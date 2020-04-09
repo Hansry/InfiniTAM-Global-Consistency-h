@@ -19,6 +19,12 @@ __global__ void integrateIntoScene_device(TVoxel *localVBA, const ITMHashEntry *
 	const Vector4u *rgb, Vector2i rgbImgSize, const float *depth, Vector2i imgSize, Matrix4f M_d, Matrix4f M_rgb, Vector4f projParams_d, 
 	Vector4f projParams_rgb, float _voxelSize, float mu, int maxW);
 
+//融合操作+权重加权
+template<class TVoxel, bool stopMaxW, bool approximateIntegration>
+__global__ void integrateIntoScene_device(TVoxel *localVBA, const ITMHashEntry *hashTable, int *noVisibleEntryIDs,
+	const Vector4u *rgb, Vector2i rgbImgSize, const float *depth, Vector2i imgSize, Matrix4f M_d, Matrix4f M_rgb, Vector4f projParams_d, 
+	Vector4f projParams_rgb, float _voxelSize, float mu, int maxW, ITMLib::Engine::WeightParams weightParams);
+
 template<class TVoxel, bool stopMaxW, bool approximateIntegration>
 __global__ void integrateIntoScene_device(TVoxel *voxelArray, const ITMPlainVoxelArray::ITMVoxelArrayInfo *arrayInfo,
 	const Vector4u *rgb, Vector2i rgbImgSize, const float *depth, Vector2i depthImgSize, Matrix4f M_d, Matrix4f M_rgb, Vector4f projParams_d, 
@@ -33,7 +39,7 @@ __global__ void integrateIntoSceneH_device(TVoxel *localVBA, const ITMHashEntry 
 template<class TVoxel, bool stopMaxW, bool approximateIntegration>
 __global__ void DeIntegrateIntoScene_device(TVoxel *localVBA, const ITMHashEntry *hashTable, int *noVisibleEntryIDs,
 	const Vector4u *rgb, Vector2i rgbImgSize, const float *depth, Vector2i imgSize, Matrix4f M_d, Matrix4f M_rgb, Vector4f projParams_d, 
-	Vector4f projParams_rgb, float _voxelSize, float mu, int maxW);
+	Vector4f projParams_rgb, float _voxelSize, float mu, int maxW, ITMLib::Engine::WeightParams weightParams);
 
 __global__ void buildHashAllocAndVisibleType_device(uchar *entriesAllocType, uchar *entriesVisibleType, Vector4s *blockCoords, const float *depth,
 	Matrix4f invM_d, Vector4f projParams_d, float mu, Vector2i _imgSize, float _voxelSize, ITMHashEntry *hashTable, float viewFrustum_min,
@@ -372,21 +378,23 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::IntegrateInto
 
 	dim3 cudaBlockSize(SDF_BLOCK_SIZE, SDF_BLOCK_SIZE, SDF_BLOCK_SIZE);
 	dim3 gridSize(renderState_vh->noVisibleEntries);
+	
+        WeightParams fusionWeightParams = this->GetFusionWeightParams();
 
 	if (scene->sceneParams->stopIntegratingAtMaxW)
 		if (trackingState->requiresFullRendering)
 			integrateIntoScene_device<TVoxel, true, false> << <gridSize, cudaBlockSize >> >(localVBA, hashTable, visibleEntryIDs,
-			rgb, rgbImgSize, depth, depthImgSize, M_d, M_rgb, projParams_d, projParams_rgb, voxelSize, mu, maxW);
+			rgb, rgbImgSize, depth, depthImgSize, M_d, M_rgb, projParams_d, projParams_rgb, voxelSize, mu, maxW, fusionWeightParams);
 		else
 			integrateIntoScene_device<TVoxel, true, true> << <gridSize, cudaBlockSize >> >(localVBA, hashTable, visibleEntryIDs,
-			rgb, rgbImgSize, depth, depthImgSize, M_d, M_rgb, projParams_d, projParams_rgb, voxelSize, mu, maxW);
+			rgb, rgbImgSize, depth, depthImgSize, M_d, M_rgb, projParams_d, projParams_rgb, voxelSize, mu, maxW, fusionWeightParams);
 	else
 		if (trackingState->requiresFullRendering)
 			integrateIntoScene_device<TVoxel, false, false> << <gridSize, cudaBlockSize >> >(localVBA, hashTable, visibleEntryIDs,
-			rgb, rgbImgSize, depth, depthImgSize, M_d, M_rgb, projParams_d, projParams_rgb, voxelSize, mu, maxW);
+			rgb, rgbImgSize, depth, depthImgSize, M_d, M_rgb, projParams_d, projParams_rgb, voxelSize, mu, maxW, fusionWeightParams);
 		else
 			integrateIntoScene_device<TVoxel, false, true> << <gridSize, cudaBlockSize >> >(localVBA, hashTable, visibleEntryIDs,
-			rgb, rgbImgSize, depth, depthImgSize, M_d, M_rgb, projParams_d, projParams_rgb, voxelSize, mu, maxW);
+			rgb, rgbImgSize, depth, depthImgSize, M_d, M_rgb, projParams_d, projParams_rgb, voxelSize, mu, maxW, fusionWeightParams);
 }
 
 
@@ -435,22 +443,24 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::DeIntegrateIn
 	//gridDim是一个dim3类型，表示网格的大小，一个网格中通常有多个线程块
 	dim3 gridSize(static_cast<uint32_t>(mDefusionBlockDataBase[view->mTimeStamp].count));
 	
+	WeightParams fusionWeightParams = this->GetFusionWeightParams();
+	
 // 	printf("%s%d", "ITMSceneReconstructionEngine_CUDA.cu 430: ", static_cast<uint32_t>(mDefusionBlockDataBase[view->mTimeStamp].count));
 
 	if (scene->sceneParams->stopIntegratingAtMaxW)
 		if (trackingState->requiresFullRendering)
 			DeIntegrateIntoScene_device<TVoxel, true, false> << <gridSize, cudaBlockSize >> >(localVBA, hashTable, visibleEntryIDs,
-			rgb, rgbImgSize, depth, depthImgSize, M_d, M_rgb, projParams_d, projParams_rgb, voxelSize, mu, maxW);
+			rgb, rgbImgSize, depth, depthImgSize, M_d, M_rgb, projParams_d, projParams_rgb, voxelSize, mu, maxW, fusionWeightParams);
 		else
 			DeIntegrateIntoScene_device<TVoxel, true, true> << <gridSize, cudaBlockSize >> >(localVBA, hashTable, visibleEntryIDs,
-			rgb, rgbImgSize, depth, depthImgSize, M_d, M_rgb, projParams_d, projParams_rgb, voxelSize, mu, maxW);
+			rgb, rgbImgSize, depth, depthImgSize, M_d, M_rgb, projParams_d, projParams_rgb, voxelSize, mu, maxW, fusionWeightParams);
 	else
 		if (trackingState->requiresFullRendering)
 			DeIntegrateIntoScene_device<TVoxel, false, false> << <gridSize, cudaBlockSize >> >(localVBA, hashTable, visibleEntryIDs,
-			rgb, rgbImgSize, depth, depthImgSize, M_d, M_rgb, projParams_d, projParams_rgb, voxelSize, mu, maxW);
+			rgb, rgbImgSize, depth, depthImgSize, M_d, M_rgb, projParams_d, projParams_rgb, voxelSize, mu, maxW, fusionWeightParams);
 		else
 			DeIntegrateIntoScene_device<TVoxel, false, true> << <gridSize, cudaBlockSize >> >(localVBA, hashTable, visibleEntryIDs,
-			rgb, rgbImgSize, depth, depthImgSize, M_d, M_rgb, projParams_d, projParams_rgb, voxelSize, mu, maxW);
+			rgb, rgbImgSize, depth, depthImgSize, M_d, M_rgb, projParams_d, projParams_rgb, voxelSize, mu, maxW, fusionWeightParams);
 	delete mDefusionBlockDataBase[view->mTimeStamp].blockCoords;
 	mDefusionBlockDataBase.erase(iter);
 }
@@ -1029,7 +1039,6 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHHash>::IntegrateInt
 }
 
 // device functions
-// 融合操作函数
 template<class TVoxel, bool stopMaxW, bool approximateIntegration>
 __global__ void integrateIntoScene_device(TVoxel *voxelArray, const ITMPlainVoxelArray::ITMVoxelArrayInfo *arrayInfo,
 	const Vector4u *rgb, Vector2i rgbImgSize, const float *depth, Vector2i depthImgSize, Matrix4f M_d, Matrix4f M_rgb, Vector4f projParams_d, 
@@ -1055,6 +1064,7 @@ __global__ void integrateIntoScene_device(TVoxel *voxelArray, const ITMPlainVoxe
 }
 
 template<class TVoxel, bool stopMaxW, bool approximateIntegration>
+// 融合操作函数
 __global__ void integrateIntoScene_device(TVoxel *localVBA, const ITMHashEntry *hashTable, int *visibleEntryIDs,
 	const Vector4u *rgb, Vector2i rgbImgSize, const float *depth, Vector2i depthImgSize, Matrix4f M_d, Matrix4f M_rgb, Vector4f projParams_d, 
 	Vector4f projParams_rgb, float _voxelSize, float mu, int maxW)
@@ -1086,6 +1096,44 @@ __global__ void integrateIntoScene_device(TVoxel *localVBA, const ITMHashEntry *
 	pt_model.w = 1.0f;
 
 	ComputeUpdatedVoxelInfo<TVoxel::hasColorInformation,TVoxel>::compute(localVoxelBlock[locId], pt_model, M_d, projParams_d, M_rgb, projParams_rgb, mu, maxW, depth, depthImgSize, rgb, rgbImgSize);
+}
+
+// device functions
+// 融合操作函数+对每次融合进行加权
+template<class TVoxel, bool stopMaxW, bool approximateIntegration>
+__global__ void integrateIntoScene_device(TVoxel *localVBA, const ITMHashEntry *hashTable, int *visibleEntryIDs,
+	const Vector4u *rgb, Vector2i rgbImgSize, const float *depth, Vector2i depthImgSize, Matrix4f M_d, Matrix4f M_rgb, Vector4f projParams_d, 
+	Vector4f projParams_rgb, float _voxelSize, float mu, int maxW, ITMLib::Engine::WeightParams weightParams)
+{
+	Vector3i globalPos;
+	
+	int entryId = visibleEntryIDs[blockIdx.x];
+
+	const ITMHashEntry &currentHashEntry = hashTable[entryId];
+
+	if (currentHashEntry.ptr < 0) return;
+
+	globalPos = currentHashEntry.pos.toInt() * SDF_BLOCK_SIZE;
+
+	TVoxel *localVoxelBlock = &(localVBA[currentHashEntry.ptr * SDF_BLOCK_SIZE3]);
+
+	int x = threadIdx.x, y = threadIdx.y, z = threadIdx.z;
+
+	Vector4f pt_model; int locId;
+
+	locId = x + y * SDF_BLOCK_SIZE + z * SDF_BLOCK_SIZE * SDF_BLOCK_SIZE;
+
+	if (stopMaxW) if (localVoxelBlock[locId].w_depth == maxW) return;
+	if (approximateIntegration) if (localVoxelBlock[locId].w_depth != 0) return;
+
+	pt_model.x = (float)(globalPos.x + x) * _voxelSize;
+	pt_model.y = (float)(globalPos.y + y) * _voxelSize;
+	pt_model.z = (float)(globalPos.z + z) * _voxelSize;
+	pt_model.w = 1.0f;
+	
+// 	printf("weightParams: %d%d%d", weightParams.depthWeighting, weightParams.maxDistance, weightParams.maxNewW);
+
+	ComputeUpdatedVoxelInfo<TVoxel::hasColorInformation,TVoxel>::compute(localVoxelBlock[locId], pt_model, M_d, projParams_d, M_rgb, projParams_rgb, mu, maxW, depth, depthImgSize, rgb, rgbImgSize, weightParams);
 }
 
 template<class TVoxel, bool stopMaxW>
@@ -1129,7 +1177,7 @@ __global__ void integrateIntoSceneH_device(TVoxel *localVBA, const ITMHashEntry 
 template<class TVoxel, bool stopMaxW, bool approximateIntegration>
 __global__ void DeIntegrateIntoScene_device(TVoxel *localVBA, const ITMHashEntry *hashTable, int *visibleEntryIDs,
 	const Vector4u *rgb, Vector2i rgbImgSize, const float *depth, Vector2i depthImgSize, Matrix4f M_d, Matrix4f M_rgb, Vector4f projParams_d, 
-	Vector4f projParams_rgb, float _voxelSize, float mu, int maxW)
+	Vector4f projParams_rgb, float _voxelSize, float mu, int maxW, ITMLib::Engine::WeightParams weightParams)
 {
 	Vector3i globalPos;
 	
@@ -1160,7 +1208,7 @@ __global__ void DeIntegrateIntoScene_device(TVoxel *localVBA, const ITMHashEntry
 	pt_model.z = (float)(globalPos.z + z) * _voxelSize;
 	pt_model.w = 1.0f;
 
-	ComputeDeUpdatedVoxelInfo<TVoxel::hasColorInformation,TVoxel>::Decompute(localVoxelBlock[locId], pt_model, M_d, projParams_d, M_rgb, projParams_rgb, mu, maxW, depth, depthImgSize, rgb, rgbImgSize);
+	ComputeDeUpdatedVoxelInfo<TVoxel::hasColorInformation,TVoxel>::Decompute(localVoxelBlock[locId], pt_model, M_d, projParams_d, M_rgb, projParams_rgb, mu, maxW, depth, depthImgSize, rgb, rgbImgSize, weightParams);
 }
 
 

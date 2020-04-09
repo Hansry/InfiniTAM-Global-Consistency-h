@@ -52,6 +52,10 @@ namespace ITMLib
 			
 			size_t GetDecayedBlockCount() const;
 			
+			void SetFusionWeightParams(const WeightParams &weightParams) {
+				sceneRecoEngine->SetFusionWeightParams(weightParams);
+			}
+			
 			/** \brief Constructor
 			    Ommitting a separate image size for the depth images
 			    will assume same resolution as for the RGB images.
