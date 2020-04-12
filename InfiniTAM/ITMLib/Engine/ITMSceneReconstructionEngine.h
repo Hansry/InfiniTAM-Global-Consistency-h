@@ -56,6 +56,10 @@ namespace ITMLib
 		                           int maxWeight,
 		                           int minAge,
 		                           bool forceAllVoxels) = 0;
+					   
+			virtual void SlideWindow(ITMScene<TVoxel, TIndex> *scene,
+			                         const ITMRenderState *renderState,
+			                         int maxAge) = 0;
 				
 			///@brief 返回被decayed掉（释放掉）的voxel block的个数
 			virtual size_t GetDecayedBlockCount() = 0;

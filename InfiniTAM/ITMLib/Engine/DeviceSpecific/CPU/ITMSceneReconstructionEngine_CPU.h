@@ -33,6 +33,10 @@ namespace ITMLib
 		        void Decay(ITMScene<TVoxel, ITMVoxelBlockHash> *scene,
 		                   const ITMRenderState *renderState,
 			           int maxWeight, int minAge, bool forceAllVoxels) override;
+			
+			void SlideWindow(ITMScene<TVoxel, ITMVoxelBlockHash> *scene,
+			                 const ITMRenderState *renderState,
+			                 int maxAge) override;
                         
 			size_t GetDecayedBlockCount() override;
 

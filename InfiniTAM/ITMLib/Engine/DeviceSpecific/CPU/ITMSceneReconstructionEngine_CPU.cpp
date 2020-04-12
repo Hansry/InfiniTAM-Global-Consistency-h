@@ -353,6 +353,15 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::Decay(
 }
 
 template<class TVoxel>
+void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::SlideWindow(
+		ITMScene<TVoxel, ITMVoxelBlockHash> *scene,
+		const ITMRenderState *renderState,
+                int maxAge)
+{
+	throw std::runtime_error("Voxel decay is not yet supported on the CPU.");
+}
+
+template<class TVoxel>
 void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::DeIntegrateIntoScene(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, const ITMView *view,
 	const ITMTrackingState *trackingState)
 {

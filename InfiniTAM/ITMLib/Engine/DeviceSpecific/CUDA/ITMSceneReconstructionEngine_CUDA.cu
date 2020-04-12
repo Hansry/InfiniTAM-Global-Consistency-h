@@ -116,12 +116,17 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel,ITMVoxelBlockHash>::ResetScene(ITM
 	totalDecayedBlockCount = 0;
 	// Clean up the visible frame queue used in voxel decay.
 	while (! frameVisibleBlocks.empty()) {
-		delete frameVisibleBlocks.front().blockCoords;
+// 		delete frameVisibleBlocks.front().blockCoords;
 		frameVisibleBlocks.pop();
 	}
 	
+	while (! frameVisibleBlocksForSlideWindow.empty()) {
+ 		delete frameVisibleBlocksForSlideWindow.front().blockCoords;
+		frameVisibleBlocksForSlideWindow.pop();
+	}
+	
 	for(std::map<double, DefusionVisibleBlockInfo>::iterator iter=mDefusionBlockDataBase.begin(); iter!=mDefusionBlockDataBase.end(); iter++){
-	    delete iter->second.blockCoords;
+// 	    delete iter->second.blockCoords;
 	    mDefusionBlockDataBase.erase(iter);
 	}
 	
@@ -267,20 +272,18 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::AllocateScene
 	}
 	
 	///这里主要是为了存储每一个融合帧的可见视图，以进行反融合操作
-	ORUtils::MemoryBlock<int> *visibleEntryIDsDefusion = nullptr;
-	if(visibleBlockByteCount > 0){
-	  ///在这里会进行内存的分配
-	  ///分配与当前可视的voxel block相同的CUDA内存
-	  visibleEntryIDsDefusion = new ORUtils::MemoryBlock<int>(visibleBlockByteCount, MEMORYDEVICE_CUDA);
-	  ITMSafeCall(cudaMemcpy(visibleEntryIDsDefusion->GetData(MEMORYDEVICE_CUDA),
-	                         visibleEntryIDs,
-			         visibleBlockByteCount,
-			         cudaMemcpyDeviceToDevice));
-	}
-	
+// 	ORUtils::MemoryBlock<int> *visibleEntryIDsDefusion = nullptr;
+// 	if(visibleBlockByteCount > 0){
+// 	  ///在这里会进行内存的分配
+// 	  ///分配与当前可视的voxel block相同的CUDA内存
+// 	  visibleEntryIDsDefusion = new ORUtils::MemoryBlock<int>(visibleBlockByteCount, MEMORYDEVICE_CUDA);
+// 	  ITMSafeCall(cudaMemcpy(visibleEntryIDsDefusion->GetData(MEMORYDEVICE_CUDA),
+// 	                         visibleEntryIDs,
+// 			         visibleBlockByteCount,
+// 			         cudaMemcpyDeviceToDevice));
+// 	}
 	///存储了可见block的数量以及EntryId
-	DefusionVisibleBlockInfo defuvisibleBlockInfo = {visibleBlockCount, visibleEntryIDsDefusion};
-	
+	DefusionVisibleBlockInfo defuvisibleBlockInfo = {visibleBlockCount, visibleEntryIDsCopy};
 	mDefusionBlockDataBase[view->mTimeStamp] = defuvisibleBlockInfo;
 	
 	VisibleBlockInfo visibleBlockInfo = {
@@ -290,6 +293,7 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::AllocateScene
 	};
 	
 	frameVisibleBlocks.push(visibleBlockInfo);
+	frameVisibleBlocksForSlideWindow.push(visibleBlockInfo);
 	frameIdx ++;
 	
 	//This just returns the size of the pre-allocated buffer
@@ -461,7 +465,7 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::DeIntegrateIn
 		else
 			DeIntegrateIntoScene_device<TVoxel, false, true> << <gridSize, cudaBlockSize >> >(localVBA, hashTable, visibleEntryIDs,
 			rgb, rgbImgSize, depth, depthImgSize, M_d, M_rgb, projParams_d, projParams_rgb, voxelSize, mu, maxW, fusionWeightParams);
-	delete mDefusionBlockDataBase[view->mTimeStamp].blockCoords;
+// 	delete mDefusionBlockDataBase[view->mTimeStamp].blockCoords;
 	mDefusionBlockDataBase.erase(iter);
 }
 ///@brief 从hash table中将该block进行删除，同时释放block对应的VBA entry
@@ -652,6 +656,83 @@ __device__ void decayVoxel(
 	}
 }
 
+template<class TVoxel>
+__device__ void deleteVoxel(
+		Vector3i blockGridPos,
+		int locId,
+		TVoxel *localVBA,			// could wrap in HashMap struct
+		ITMHashEntry *hashTable,		// could wrap
+		int maxAge,
+		int *voxelAllocationList,		// could wrap
+		int *lastFreeBlockId,			// could wrap
+		int *locks,
+		int currentFrame,
+		uchar *entriesVisibleType		// could wrap
+) {
+	bool isFound = false;
+	int blockHashIdx = -1;
+	int blockPrevHashIdx = -1;
+        
+	int voxelIdx = findVoxel(hashTable, blockGridPos, locId, isFound, blockHashIdx, blockPrevHashIdx);
+
+	if (-1 == blockHashIdx) {
+		if (locId == 0) {
+		     printf("ERROR: could not find bucket for (%d, %d, %d) @ hash ID %d.\n",
+				   blockGridPos.x, blockGridPos.y, blockGridPos.z, hashIndex(blockGridPos));
+		}
+		return;
+	}
+
+	bool emptyVoxel = false;
+	bool safeToClear = true;
+// 	int age = currentFrame - hashTable[blockHashIdx].allocatedTime;
+// 	if (age < maxAge) {
+// 		// Important corner case: when we had a block in the visible list, but it got deleted in
+// 		// a previous decay pass, and ended up also getting reallocated (and thus the old ID in
+// 		// the visible list was pointing to the wrong thing).
+// 		safeToClear = false;
+// 	}
+
+	if (safeToClear) {
+		// The SDF limit it EXPERIMENTAL and enabling it may be to aggressive when applied on a per-voxel basis.;
+	        // localVBA[voxelIdx]为要decay的voxel
+		if (localVBA[voxelIdx].w_depth > 0) {
+			localVBA[voxelIdx].reset();
+			emptyVoxel = true;
+		}
+
+		if (localVBA[voxelIdx].w_depth == 0) {
+			emptyVoxel = true;
+		}
+	}
+
+	// Count the empty voxels in the block, to determine if it's empty
+	// TODO(andrei): Try summing all the weights and empty == weightSum < k (==3-10).
+	// voxelPerrBlock为每个block中包含的voxels
+	static const int voxelsPerBlock = SDF_BLOCK_SIZE3;
+	__shared__ int countBuffer[voxelsPerBlock];
+	countBuffer[locId] = static_cast<int>(emptyVoxel);
+	__syncthreads();
+
+	// Block-level sum for counting non-empty voxels in this block.
+	// 计算该block下的非空的voxels的数量
+	blockReduce(countBuffer, voxelsPerBlock, locId);
+	__syncthreads();
+	
+	//只有当voxle block里面的voxel全部为空的时候，才会将该voxel bolck进行删除
+	int emptyVoxels = countBuffer[0];
+	bool emptyBlock = (emptyVoxels == voxelsPerBlock);
+
+	if (locId == 0 && emptyBlock && safeToClear) {
+		deleteBlock<TVoxel>(hashTable,
+				    blockGridPos,
+				    locks,
+				    voxelAllocationList,
+				    lastFreeBlockId,
+				    entriesVisibleType);
+	}
+}
+
 /// @brief 清除权重小于maxWeight的voxel blocks,同时在‘outBlocksToDellocate’中将在进程中变为空的voxel blocks标记为等待释放(pending deallocation),
 ///        对可视voxel block表的每一个voxel block进行decay
 /// @param localVBA voxel block存储的原始内存
@@ -700,6 +781,81 @@ __global__ void decay_device(TVoxel *localVBA,
 	                   entriesVisibleType);
 }
 
+/// @brief 清除权重小于maxWeight的voxel blocks,同时在‘outBlocksToDellocate’中将在进程中变为空的voxel blocks标记为等待释放(pending deallocation),
+///        对可视voxel block表的每一个voxel block进行decay
+/// @param localVBA voxel block存储的原始内存
+/// @param hashTable 将hashIdx映射到localVBA中地址的哈希表
+/// @param visibleBlockPositions 通过blockIdx.x得到hashIdx，即visibleBlockPositions存储了所有voxel block的hashIdx,通过hashTable映射后可得到HashEntry
+/// @param maxAge 当某帧的age大于maxAge,则删除该帧对应的visible voxel
+/// @param voxelAllocationList 该列表包含在localVBA使用或未被使用的voxel blocks的索引
+/// @param lastFreeBlockId 'voxelAllocationList'中最后空闲未被使用(last free)的blocks的索引
+/// @param locks 当删除block的时候，用来锁住bucket
+/// @param currentFrame 被SLAM system处理过的当前帧的索引
+/// @param entriesVisibleType 将hash table indices映射到一个enum中，该enum表示特定的voxel block是否可见
+template<class TVoxel>
+__global__ void slidewindow_device(TVoxel *localVBA,
+                             ITMHashEntry *hashTable,
+			     int *VisibleBlockPositions,
+			     int maxAge,
+			     int *voxelAllocationList,
+			     int *lastFreeBlockId,
+			     int *locks,
+			     int currentFrame,
+			     uchar *entriesVisibleType)
+{
+         //The local offset of the voxel in the current block
+         //体素在当前voxel block的位置
+         int locId = threadIdx.x + threadIdx.y * SDF_BLOCK_SIZE + threadIdx.z * SDF_BLOCK_SIZE * SDF_BLOCK_SIZE;
+	 int entryId = VisibleBlockPositions[blockIdx.x];
+	 if (entryId < 0) return;
+	 
+	 const ITMHashEntry &currentHashEntry = hashTable[entryId];
+	 if (currentHashEntry.ptr < 0) return;
+	
+	///因为blockGridPos是以SDF_BLOCK_SIZE为单位的，简单的说就是其计算方法是以一个block一个block来算的，乘上SDF_BLOCK_SIZE后其单位就是1了
+	Vector3i blockGridPos = currentHashEntry.pos.toInt();
+	deleteVoxel<TVoxel>(blockGridPos, 
+	                   locId, 
+	                   localVBA, 
+	                   hashTable, 
+	                   maxAge, 
+	                   voxelAllocationList, 
+	                   lastFreeBlockId, 
+	                   locks, 
+	                   currentFrame,
+	                   entriesVisibleType);
+}
+
+template<class TVoxel>
+void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::PartialSlideWindow(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, 
+										const ITMRenderState *renderState,
+										const VisibleBlockInfo &visibleBlockInfo,
+										int maxAge){
+  
+        ///创建每个scene时分配的这块内存中每个block的索引
+        int *voxelAllocationList = scene->localVBA.GetAllocationList();
+	///创建一个scene时用来存储voxel block时分配的内存大小，其中voxel block还存储了每个voxel的sdf值
+	TVoxel *localVBA = scene->localVBA.GetVoxelBlocks();
+	ITMHashEntry *hashTable = scene->index.GetEntries();
+	
+	/// cudaMemeset为local_device分配SDF_BUCKET_NUM个0
+	ITMSafeCall(cudaMemset(locks_device, 0, SDF_BUCKET_NUM*sizeof(int)));
+	
+	dim3 voxelBlockSize(SDF_BLOCK_SIZE, SDF_BLOCK_SIZE, SDF_BLOCK_SIZE);
+	dim3 gridSize(static_cast<uint32_t>(visibleBlockInfo.count));
+	slidewindow_device<TVoxel> <<< gridSize, voxelBlockSize >>> (
+	         localVBA,
+		 hashTable,
+		 visibleBlockInfo.blockCoords->GetData(MEMORYDEVICE_CUDA),
+		 maxAge,
+		 voxelAllocationList,
+		 lastFreeBlockId_device,
+		 locks_device,
+		 frameIdx,
+		 ((ITMRenderState_VH*)renderState)->GetEntriesVisibleType());					       
+  	delete visibleBlockInfo.blockCoords;
+}
+
 template<class TVoxel>
 void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::PartialDecay(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, 
 										const ITMRenderState *renderState,
@@ -729,7 +885,7 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::PartialDecay(
 		 locks_device,
 		 frameIdx,
 		 ((ITMRenderState_VH*)renderState)->GetEntriesVisibleType());					       
-	delete visibleBlockInfo.blockCoords;
+//  	delete visibleBlockInfo.blockCoords;
 }
 
 ///@brief 对地图进行正则化
@@ -768,6 +924,46 @@ void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::Decay(
 	         freeBlockCount,
 	         maxWeight,
 	         minAge,
+	         savingMb);
+	}
+	else{
+	  printf("Decay process found NO voxel blocks to deallocate.\n");
+	} 
+}
+
+///@brief 对地图进行正则化
+template<class TVoxel>
+void ITMSceneReconstructionEngine_CUDA<TVoxel, ITMVoxelBlockHash>::SlideWindow(
+                         ITMScene<TVoxel,ITMVoxelBlockHash> *scene,
+			 const ITMRenderState* renderState,
+			 int maxAge){
+	int oldLastFreeBlockId = scene->localVBA.lastFreeBlockId;
+	
+	ITMSafeCall(cudaMemcpy(lastFreeBlockId_device, &(scene->localVBA.lastFreeBlockId), 1*sizeof(int), cudaMemcpyHostToDevice));
+	
+	///frameVisibleBlocks为一个queue，若其大小大于minAge,则选取最老的VisibleBlockInfo进行decay，decay后将其弹出队列
+	if(static_cast<long>(frameVisibleBlocksForSlideWindow.size()) > maxAge){
+	  //只是进行对‘minAge’之前帧的voxel blocks进行操作
+	  VisibleBlockInfo visible = frameVisibleBlocksForSlideWindow.front();
+	  frameVisibleBlocksForSlideWindow.pop();
+	  //当要decay的当前帧的可见voxel blocks大于0时，才对该帧进行decay
+	  if(visible.count > 0){
+	    PartialSlideWindow(scene, renderState, visible, maxAge);
+	  }
+	}
+	
+	//这确保了ITM “知道” localVBA中已释放的voxel block的情况，我们需要使用它来统计释放了多少体素块
+	ITMSafeCall(cudaMemcpy(&(scene->localVBA.lastFreeBlockId), lastFreeBlockId_device, 1*sizeof(int), cudaMemcpyDeviceToHost));
+	int freeBlockCount = scene->localVBA.lastFreeBlockId - oldLastFreeBlockId;
+        totalDecayedBlockCount += freeBlockCount;
+	
+	if(freeBlockCount > 0){
+	  size_t savings = sizeof(TVoxel)*SDF_BLOCK_SIZE3*freeBlockCount;
+	  float savingMb = (savings/1024.0f/1024.0f);
+	  printf("SlideWindow: Found %d candidate blocks to deallocate with age older [%d]."
+	         "Saved %.2fMb. \n",
+	         freeBlockCount,
+	         maxAge,
 	         savingMb);
 	}
 	else{

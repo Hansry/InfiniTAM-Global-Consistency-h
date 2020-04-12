@@ -37,6 +37,10 @@ namespace ITMLib
 			
 			//用来保存最近可见的block Id的列表，用于decay
 			std::queue<VisibleBlockInfo> frameVisibleBlocks;
+			
+			//用来保存最近可见的block_Id列表，用于地图的滑动窗口
+			std::queue<VisibleBlockInfo> frameVisibleBlocksForSlideWindow;
+			
 			std::map<double, DefusionVisibleBlockInfo> mDefusionBlockDataBase;
 			
 			int *lastFreeBlockId_device;
@@ -55,6 +59,13 @@ namespace ITMLib
 		                          const VisibleBlockInfo &visibleBlockInfo,
 		                          int minAge,
 		                          int maxWeight);
+			
+			
+			void PartialSlideWindow(ITMScene<TVoxel, ITMVoxelBlockHash> *scene,
+			                        const ITMRenderState *renderState,
+			                        const VisibleBlockInfo &visibleBlockInfo,
+						int maxAge);
+			
 			
 			/*
 			/// \brief 在整个地图上进行voxel decay
@@ -80,6 +91,10 @@ namespace ITMLib
 	                           int maxWeight,
 	                           int minAge,
 	                           bool forceAllVoxels) override;
+			
+			void SlideWindow(ITMScene<TVoxel, ITMVoxelBlockHash> *scene,
+			                 const ITMRenderState *renderState,
+			                 int maxAge) override;
 				   
 		        size_t GetDecayedBlockCount() override;
 

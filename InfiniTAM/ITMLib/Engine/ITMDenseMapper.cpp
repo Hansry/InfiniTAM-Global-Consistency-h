@@ -94,9 +94,18 @@ void ITMDenseMapper<TVoxel,TIndex>::Decay(
      ITMRenderState *renderState,
      int maxWeight,
      int minAge,
-     bool forceAllVoxels)
-{
+     bool forceAllVoxels){
+  
      sceneRecoEngine->Decay(scene, renderState, maxWeight, minAge, forceAllVoxels);
+}
+
+template<class TVoxel, class TIndex>
+void ITMDenseMapper<TVoxel, TIndex>::SlideWindow(
+     ITMScene<TVoxel,TIndex> *scene,
+     ITMRenderState *renderState,
+     int maxAge){
+      
+     sceneRecoEngine->SlideWindow(scene, renderState, maxAge);
 }
 
 template<class TVoxel, class TIndex>

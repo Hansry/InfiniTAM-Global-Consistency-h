@@ -50,6 +50,8 @@ namespace ITMLib
 			///        反之，系统只会在可见的voxel列表中进行decay,虽然这不是100%准确，但是对于大场景的地图来说，速度要快几个数量级。
 			void Decay(ITMScene<TVoxel,TIndex> *scene, ITMRenderState *renderState, int maxWeight, int minAge, bool forceAllVoxels = false);
 			
+			void SlideWindow(ITMScene<TVoxel, TIndex> *scene, ITMRenderState *renderState, int maxAge);
+			
 			size_t GetDecayedBlockCount() const;
 			
 			void SetFusionWeightParams(const WeightParams &weightParams) {
