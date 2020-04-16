@@ -136,7 +136,7 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::IntegrateIntoS
 ///        若已经分配，则更改其状态为当前可见，若还未分配，则进行分配。
 template<class TVoxel>
 void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::AllocateSceneFromDepth(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, const ITMView *view,
-	const ITMTrackingState *trackingState, const ITMRenderState *renderState, bool onlyUpdateVisibleList)
+	const ITMTrackingState *trackingState, const ITMRenderState *renderState, bool onlyUpdateVisibleList, bool isDefusion)
 {
 	Vector2i depthImgSize = view->depth->noDims;
 	//场景体素的大小
@@ -353,6 +353,17 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::Decay(
 }
 
 template<class TVoxel>
+void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::DecayDefusionPart(
+		ITMScene<TVoxel, ITMVoxelBlockHash> *scene,
+		const ITMRenderState *renderState,
+		int maxWeight,
+		int minAge,
+		bool forceAllVoxels)
+{
+	throw std::runtime_error("Voxel decay is not yet supported on the CPU.");
+}
+
+template<class TVoxel>
 void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::SlideWindow(
 		ITMScene<TVoxel, ITMVoxelBlockHash> *scene,
 		const ITMRenderState *renderState,
@@ -360,6 +371,16 @@ void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::SlideWindow(
 {
 	throw std::runtime_error("Voxel decay is not yet supported on the CPU.");
 }
+
+template<class TVoxel>
+void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::SlideWindowDefusionPart(
+		ITMScene<TVoxel, ITMVoxelBlockHash> *scene,
+		const ITMRenderState *renderState,
+                int maxAge, int maxSize)
+{
+	throw std::runtime_error("Voxel decay is not yet supported on the CPU.");
+}
+
 
 template<class TVoxel>
 void ITMSceneReconstructionEngine_CPU<TVoxel, ITMVoxelBlockHash>::DeIntegrateIntoScene(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, const ITMView *view,
@@ -483,7 +504,10 @@ void ITMSceneReconstructionEngine_CPU<TVoxel,ITMVoxelBlockHHash>::IntegrateIntoS
 }
 
 template<class TVoxel>
-void ITMSceneReconstructionEngine_CPU<TVoxel,ITMVoxelBlockHHash>::AllocateSceneFromDepth(ITMScene<TVoxel,ITMVoxelBlockHHash> *scene, const ITMView *view, const ITMTrackingState *trackingState, const ITMRenderState *renderState, bool onlyUpdateVisibleList)
+void ITMSceneReconstructionEngine_CPU<TVoxel,ITMVoxelBlockHHash>::AllocateSceneFromDepth(ITMScene<TVoxel,ITMVoxelBlockHHash> *scene, const ITMView *view, const ITMTrackingState *trackingState, 
+											 const ITMRenderState *renderState, 
+											 bool onlyUpdateVisibleList, 
+											 bool isDefusion)
 {
 	Vector2i depthImgSize = view->depth->noDims;
 	float smallestVoxelSize = scene->sceneParams->voxelSize;
@@ -704,7 +728,7 @@ void ITMSceneReconstructionEngine_CPU<TVoxel,ITMPlainVoxelArray>::ResetScene(ITM
 
 template<class TVoxel>
 void ITMSceneReconstructionEngine_CPU<TVoxel, ITMPlainVoxelArray>::AllocateSceneFromDepth(ITMScene<TVoxel, ITMPlainVoxelArray> *scene, const ITMView *view,
-	const ITMTrackingState *trackingState, const ITMRenderState *renderState, bool onlyUpdateVisibleList)
+	const ITMTrackingState *trackingState, const ITMRenderState *renderState, bool onlyUpdateVisibleList, bool isDefusion)
 {}
 
 template<class TVoxel>

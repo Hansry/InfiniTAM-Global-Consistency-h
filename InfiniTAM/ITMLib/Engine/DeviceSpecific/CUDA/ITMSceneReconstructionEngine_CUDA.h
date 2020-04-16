@@ -16,11 +16,13 @@ namespace ITMLib
 		   ORUtils::MemoryBlock<int> *blockCoords;
 		};
 		
+		/*
 		struct DefusionVisibleBlockInfo{
 		   size_t count;
+		   size_t frameIdxDefusion;
 		   ORUtils::MemoryBlock<int> *blockCoords;
 		};
-		
+		*/
 		
 		template<class TVoxel, class TIndex>
 		class ITMSceneReconstructionEngine_CUDA : public ITMSceneReconstructionEngine < TVoxel, TIndex >
@@ -37,11 +39,13 @@ namespace ITMLib
 			
 			//用来保存最近可见的block Id的列表，用于decay
 			std::queue<VisibleBlockInfo> frameVisibleBlocks;
+			std::queue<VisibleBlockInfo> frameVisibleBlocksDefusion;
 			
 			//用来保存最近可见的block_Id列表，用于地图的滑动窗口
 			std::queue<VisibleBlockInfo> frameVisibleBlocksForSlideWindow;
+			std::queue<VisibleBlockInfo> frameVisibleBlocksForSlideWindowDefusion;
 			
-			std::map<double, DefusionVisibleBlockInfo> mDefusionBlockDataBase;
+			std::map<double, VisibleBlockInfo> mDefusionBlockDataBase;
 			
 			int *lastFreeBlockId_device;
 			//用来防止从hash table删除元素时造成的数据竞争（data races）
@@ -79,7 +83,7 @@ namespace ITMLib
 			void ResetScene(ITMScene<TVoxel, ITMVoxelBlockHash> *scene);
 
 			void AllocateSceneFromDepth(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, const ITMView *view, const ITMTrackingState *trackingState,
-				const ITMRenderState *renderState, bool onlyUpdateVisibleList = false);
+				const ITMRenderState *renderState, bool onlyUpdateVisibleList = false, bool isDefusion = false);
 
 			void IntegrateIntoScene(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, const ITMView *view, const ITMTrackingState *trackingState,
 				const ITMRenderState *renderState);
@@ -91,10 +95,20 @@ namespace ITMLib
 	                           int maxWeight,
 	                           int minAge,
 	                           bool forceAllVoxels) override;
+				   
+			void DecayDefusionPart(ITMScene<TVoxel,ITMVoxelBlockHash> *scene,
+			           const ITMRenderState *renderState,
+	                           int maxWeight,
+	                           int minAge,
+	                           bool forceAllVoxels) override;
 			
 			void SlideWindow(ITMScene<TVoxel, ITMVoxelBlockHash> *scene,
 			                 const ITMRenderState *renderState,
 			                 int maxAge) override;
+					 
+			void SlideWindowDefusionPart(ITMScene<TVoxel, ITMVoxelBlockHash> *scene,
+			                 const ITMRenderState *renderState,
+			                 int maxAge, int maxSize) override;			
 				   
 		        size_t GetDecayedBlockCount() override;
 
@@ -115,7 +129,8 @@ namespace ITMLib
 		public:
 			void ResetScene(ITMScene<TVoxel, ITMVoxelBlockHHash> *scene);
 
-			void AllocateSceneFromDepth(ITMScene<TVoxel, ITMVoxelBlockHHash> *scene, const ITMView *view, const ITMTrackingState *trackingState, const ITMRenderState *renderState, bool onlyUpdateVisibleList = false);
+			void AllocateSceneFromDepth(ITMScene<TVoxel, ITMVoxelBlockHHash> *scene, const ITMView *view, const ITMTrackingState *trackingState, 
+						    const ITMRenderState *renderState, bool onlyUpdateVisibleList = false, bool isDefusion = false);
 
 			void IntegrateIntoScene(ITMScene<TVoxel, ITMVoxelBlockHHash> *scene, const ITMView *view, const ITMTrackingState *trackingState, const ITMRenderState *renderState);
 			
@@ -132,7 +147,7 @@ namespace ITMLib
 			void ResetScene(ITMScene<TVoxel, ITMPlainVoxelArray> *scene);
 
 			void AllocateSceneFromDepth(ITMScene<TVoxel, ITMPlainVoxelArray> *scene, const ITMView *view, const ITMTrackingState *trackingState,
-				const ITMRenderState *renderState, bool onlyUpdateVisibleList = false);
+				const ITMRenderState *renderState, bool onlyUpdateVisibleList = false, bool isDefusion = false);
 
 			void IntegrateIntoScene(ITMScene<TVoxel, ITMPlainVoxelArray> *scene, const ITMView *view, const ITMTrackingState *trackingState,
 				const ITMRenderState *renderState);

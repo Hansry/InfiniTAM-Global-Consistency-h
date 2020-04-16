@@ -53,7 +53,8 @@ void ITMDenseMapper<TVoxel,TIndex>::ResetScene(ITMScene<TVoxel,TIndex> *scene) c
 }
 
 template<class TVoxel, class TIndex>
-void ITMDenseMapper<TVoxel,TIndex>::ProcessFrame(const ITMView *view, const ITMTrackingState *trackingState, ITMScene<TVoxel,TIndex> *scene, ITMRenderState *renderState)
+void ITMDenseMapper<TVoxel,TIndex>::ProcessFrame(const ITMView *view, const ITMTrackingState *trackingState, ITMScene<TVoxel,TIndex> *scene, 
+						 ITMRenderState *renderState, bool onlyUpdateVisibleList, bool isDefusion)
 {
 	// split and merge voxel blocks according to their complexity
 	voxelBlockOpEngine->SplitAndMerge(scene, renderState);
@@ -64,7 +65,7 @@ void ITMDenseMapper<TVoxel,TIndex>::ProcessFrame(const ITMView *view, const ITMT
 	//     entriesAllocType，blockCoords（大小为：number of bucket + size of excess list）等的索引，并判断是否需要在voxelAllocationList
 	//     （大小为SDF_LOCAL_BLOCK_NUM（voxel block的个数） * SDF_BLOCK_SIZE3（voxel block存储值的大小））给voxel block分配新的位置
 	//步骤3:如果判断voxel block已存在，但是被swap out,则需要将其swap in, 如果不存在则需要在ordered list或者excess list进行分配
-	sceneRecoEngine->AllocateSceneFromDepth(scene, view, trackingState, renderState);
+	sceneRecoEngine->AllocateSceneFromDepth(scene, view, trackingState, renderState, onlyUpdateVisibleList, isDefusion);
 
 	// integration
 	//步骤1:将当前坐标系对应的空间点转到世界坐标系，找到对应的voxel block
@@ -100,12 +101,32 @@ void ITMDenseMapper<TVoxel,TIndex>::Decay(
 }
 
 template<class TVoxel, class TIndex>
+void ITMDenseMapper<TVoxel,TIndex>::DecayDefusionPart(
+     ITMScene<TVoxel,TIndex> *scene,
+     ITMRenderState *renderState,
+     int maxWeight,
+     int minAge,
+     bool forceAllVoxels){
+  
+     sceneRecoEngine->DecayDefusionPart(scene, renderState, maxWeight, minAge, forceAllVoxels);
+}
+
+template<class TVoxel, class TIndex>
 void ITMDenseMapper<TVoxel, TIndex>::SlideWindow(
      ITMScene<TVoxel,TIndex> *scene,
      ITMRenderState *renderState,
      int maxAge){
       
      sceneRecoEngine->SlideWindow(scene, renderState, maxAge);
+}
+
+template<class TVoxel, class TIndex>
+void ITMDenseMapper<TVoxel, TIndex>::SlideWindowDefusionPart(
+     ITMScene<TVoxel,TIndex> *scene,
+     ITMRenderState *renderState,
+     int maxAge, int maxSize){
+      
+     sceneRecoEngine->SlideWindowDefusionPart(scene, renderState, maxAge, maxSize);
 }
 
 template<class TVoxel, class TIndex>

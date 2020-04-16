@@ -23,7 +23,7 @@ namespace ITMLib
 			void ResetScene(ITMScene<TVoxel, ITMVoxelBlockHash> *scene);
 
 			void AllocateSceneFromDepth(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, const ITMView *view, const ITMTrackingState *trackingState,
-				const ITMRenderState *renderState, bool onlyUpdateVisibleList = false);
+				const ITMRenderState *renderState, bool onlyUpdateVisibleList = false, bool isDefusion = false);
 
 			void IntegrateIntoScene(ITMScene<TVoxel, ITMVoxelBlockHash> *scene, const ITMView *view, const ITMTrackingState *trackingState,
 				const ITMRenderState *renderState);
@@ -33,10 +33,18 @@ namespace ITMLib
 		        void Decay(ITMScene<TVoxel, ITMVoxelBlockHash> *scene,
 		                   const ITMRenderState *renderState,
 			           int maxWeight, int minAge, bool forceAllVoxels) override;
+				   
+		        void DecayDefusionPart(ITMScene<TVoxel, ITMVoxelBlockHash> *scene,
+		                   const ITMRenderState *renderState,
+			           int maxWeight, int minAge, bool forceAllVoxels) override;				   
 			
 			void SlideWindow(ITMScene<TVoxel, ITMVoxelBlockHash> *scene,
 			                 const ITMRenderState *renderState,
 			                 int maxAge) override;
+					 
+			void SlideWindowDefusionPart(ITMScene<TVoxel, ITMVoxelBlockHash> *scene,
+			                 const ITMRenderState *renderState,
+			                 int maxAge, int maxSize) override;			
                         
 			size_t GetDecayedBlockCount() override;
 
@@ -54,9 +62,12 @@ namespace ITMLib
 		public:
 			void ResetScene(ITMScene<TVoxel, ITMVoxelBlockHHash> *scene);
 
-			void AllocateSceneFromDepth(ITMScene<TVoxel,ITMVoxelBlockHHash> *scene, const ITMView *view, const ITMTrackingState *trackingState, const ITMRenderState *renderState, bool onlyUpdateVisibleList = false);
+			void AllocateSceneFromDepth(ITMScene<TVoxel,ITMVoxelBlockHHash> *scene, const ITMView *view, 
+						    const ITMTrackingState *trackingState, const ITMRenderState *renderState, 
+			                            bool onlyUpdateVisibleList = false, bool isDefusion = false);
 
-			void IntegrateIntoScene(ITMScene<TVoxel,ITMVoxelBlockHHash> *scene, const ITMView *view, const ITMTrackingState *trackingState, const ITMRenderState *renderState);
+			void IntegrateIntoScene(ITMScene<TVoxel,ITMVoxelBlockHHash> *scene, const ITMView *view, 
+						const ITMTrackingState *trackingState, const ITMRenderState *renderState);
 
 			ITMSceneReconstructionEngine_CPU(void);
 			~ITMSceneReconstructionEngine_CPU(void);
@@ -69,7 +80,7 @@ namespace ITMLib
 			void ResetScene(ITMScene<TVoxel, ITMPlainVoxelArray> *scene);
 
 			void AllocateSceneFromDepth(ITMScene<TVoxel, ITMPlainVoxelArray> *scene, const ITMView *view, const ITMTrackingState *trackingState,
-				const ITMRenderState *renderState, bool onlyUpdateVisibleList = false);
+				const ITMRenderState *renderState, bool onlyUpdateVisibleList = false, bool isDefusion = false);
 
 			void IntegrateIntoScene(ITMScene<TVoxel, ITMPlainVoxelArray> *scene, const ITMView *view, const ITMTrackingState *trackingState,
 				const ITMRenderState *renderState);

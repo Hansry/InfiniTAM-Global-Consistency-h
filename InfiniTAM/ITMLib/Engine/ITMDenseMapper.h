@@ -37,7 +37,7 @@ namespace ITMLib
 			void ResetScene(ITMScene<TVoxel,TIndex> *scene) const;
 
 			/// Process a single frame
-			void ProcessFrame(const ITMView *view, const ITMTrackingState *trackingState, ITMScene<TVoxel,TIndex> *scene, ITMRenderState *renderState_live);
+			void ProcessFrame(const ITMView *view, const ITMTrackingState *trackingState, ITMScene<TVoxel,TIndex> *scene, ITMRenderState *renderState_live, bool onlyUpdateVisibleList = false, bool isDefusion = false);
 			
 			/// @brief 反融合操作函数
 			void DeProcessFrame(const ITMView *view, const ITMTrackingState *trackingState, ITMScene<TVoxel,TIndex> *scene, ITMRenderState *renderState);
@@ -50,7 +50,12 @@ namespace ITMLib
 			///        反之，系统只会在可见的voxel列表中进行decay,虽然这不是100%准确，但是对于大场景的地图来说，速度要快几个数量级。
 			void Decay(ITMScene<TVoxel,TIndex> *scene, ITMRenderState *renderState, int maxWeight, int minAge, bool forceAllVoxels = false);
 			
+			/// @brief 该函数与Decay函数作用一样，但是清除的是反融合后的那部分可见列表
+			void DecayDefusionPart(ITMScene<TVoxel,TIndex> *scene, ITMRenderState *renderState, int maxWeight, int minAge, bool forceAllVoxels = false);
+			
 			void SlideWindow(ITMScene<TVoxel, TIndex> *scene, ITMRenderState *renderState, int maxAge);
+			
+			void SlideWindowDefusionPart(ITMScene<TVoxel, TIndex> *scene, ITMRenderState *renderState, int maxAge, int maxSize);
 			
 			size_t GetDecayedBlockCount() const;
 			

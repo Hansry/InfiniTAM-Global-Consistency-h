@@ -172,7 +172,10 @@ _CPU_AND_GPU_CODE_ inline float computeDeUpdatedVoxelDepthInfo(DEVICEPTR(TVoxel)
 	// write back
 	voxel.sdf = TVoxel::SDF_floatToValue(newF);
 	voxel.w_depth = newW;
-// 	printf("%s%d", "after defusion: ", voxel.w_depth);
+	if(voxel.w_depth == 0){
+// 	  printf("%s%d", "after defusion: ", voxel.w_depth);
+	  voxel.reset();
+	}
 
 	return eta;
 }

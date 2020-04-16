@@ -49,18 +49,29 @@ namespace ITMLib
 			    table so that the new image data can be integrated.
 			*/
 			virtual void AllocateSceneFromDepth(ITMScene<TVoxel,TIndex> *scene, const ITMView *view, const ITMTrackingState *trackingState,
-				const ITMRenderState *renderState, bool onlyUpdateVisibleList = false) = 0;
+				const ITMRenderState *renderState, bool onlyUpdateVisibleList = false, bool isDefusion = false) = 0;
 				
 			virtual void Decay(ITMScene<TVoxel,TIndex> *scene,
 			                   const ITMRenderState *renderState,
 		                           int maxWeight,
 		                           int minAge,
 		                           bool forceAllVoxels) = 0;
+			
+			virtual void DecayDefusionPart(ITMScene<TVoxel,TIndex> *scene,
+			                   const ITMRenderState *renderState,
+		                           int maxWeight,
+		                           int minAge,
+		                           bool forceAllVoxels) = 0;			
 					   
 			virtual void SlideWindow(ITMScene<TVoxel, TIndex> *scene,
 			                         const ITMRenderState *renderState,
 			                         int maxAge) = 0;
-				
+						 
+			
+			virtual void SlideWindowDefusionPart(ITMScene<TVoxel, TIndex> *scene,
+			                         const ITMRenderState *renderState,
+			                         int maxAge, int maxSize) = 0;
+						 
 			///@brief 返回被decayed掉（释放掉）的voxel block的个数
 			virtual size_t GetDecayedBlockCount() = 0;
 			
