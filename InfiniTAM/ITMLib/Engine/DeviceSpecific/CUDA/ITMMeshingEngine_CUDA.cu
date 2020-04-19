@@ -166,9 +166,30 @@ __global__ void meshScene_device(ITMMesh::Triangle *triangles, unsigned int *noT
 
 		if (triangleId < noMaxTriangles - 1)
 		{
-			triangles[triangleId].p0 = vertList[triangleTable[cubeIndex][i]] * factor;
-			triangles[triangleId].p1 = vertList[triangleTable[cubeIndex][i + 1]] * factor;
-			triangles[triangleId].p2 = vertList[triangleTable[cubeIndex][i + 2]] * factor;
+		        Vector3f p0 = vertList[triangleTable[cubeIndex][i]];
+			Vector3f p1 = vertList[triangleTable[cubeIndex][i + 1]];
+			Vector3f p2 = vertList[triangleTable[cubeIndex][i + 2]];
+			triangles[triangleId].p0 = p0 * factor;
+			triangles[triangleId].p1 = p1 * factor;
+			triangles[triangleId].p2 = p2 * factor;
+			
+			Vector3f c0 = VoxelColorReader<TVoxel::hasColorInformation, TVoxel, ITMVoxelBlockHash>::interpolate3(
+							localVBA,
+							hashTable,
+                                                        p0);
+			Vector3f c1 =
+					VoxelColorReader<TVoxel::hasColorInformation, TVoxel, ITMVoxelBlockHash>::interpolate3(
+							localVBA,
+							hashTable,
+							p1);
+			Vector3f c2 =
+					VoxelColorReader<TVoxel::hasColorInformation, TVoxel, ITMVoxelBlockHash>::interpolate3(
+							localVBA,
+							hashTable,
+							p2);
+			triangles[triangleId].c0 = c0;
+			triangles[triangleId].c1 = c1;
+			triangles[triangleId].c2 = c2;
 		}
 	}
 }
@@ -195,9 +216,30 @@ __global__ void meshScene_device(ITMMesh::Triangle *triangles, unsigned int *noT
 
 		if (triangleId < noMaxTriangles - 1)
 		{
-			triangles[triangleId].p0 = vertList[triangleTable[cubeIndex][i]] * smallestVoxelSize;
-			triangles[triangleId].p1 = vertList[triangleTable[cubeIndex][i + 1]] * smallestVoxelSize;
-			triangles[triangleId].p2 = vertList[triangleTable[cubeIndex][i + 2]] * smallestVoxelSize;
+		        Vector3f p0 = vertList[triangleTable[cubeIndex][i]];
+			Vector3f p1 = vertList[triangleTable[cubeIndex][i + 1]];
+			Vector3f p2 = vertList[triangleTable[cubeIndex][i + 2]];
+			
+			triangles[triangleId].p0 = p0 * smallestVoxelSize;
+			triangles[triangleId].p1 = p1 * smallestVoxelSize;
+			triangles[triangleId].p2 = p2 * smallestVoxelSize;
+			
+			Vector3f c0 = VoxelColorReader<TVoxel::hasColorInformation, TVoxel, ITMVoxelBlockHash>::interpolate3(
+							localVBA,
+							hashTable,
+                                                        p0);
+			Vector3f c1 = VoxelColorReader<TVoxel::hasColorInformation, TVoxel, ITMVoxelBlockHash>::interpolate3(
+							localVBA,
+							hashTable,
+							p1);
+			Vector3f c2 = VoxelColorReader<TVoxel::hasColorInformation, TVoxel, ITMVoxelBlockHash>::interpolate3(
+							localVBA,
+							hashTable,
+							p2);
+			triangles[triangleId].c0 = c0;
+			triangles[triangleId].c1 = c1;
+			triangles[triangleId].c2 = c2;
+
 		}
 	}
 }

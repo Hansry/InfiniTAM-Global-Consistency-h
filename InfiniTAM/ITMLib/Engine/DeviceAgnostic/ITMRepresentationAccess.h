@@ -694,6 +694,47 @@ _CPU_AND_GPU_CODE_ inline float readFromSDF_float_interpolated(DEVICEPTR(const T
 	return readFromSDF_float_interpolated_hhash_internal<TVoxel, false>(voxelData, voxelIndex, point, isFound, cache);
 }
 
+/// \brief Reads color data from the SDF volume, returning it as a 3-vector.
+template<class TVoxel, class TIndex>
+_CPU_AND_GPU_CODE_ inline Vector3f readFromSDF_color4u_interpolated_noalpha(
+		const CONSTPTR(TVoxel) *voxelData,
+		const CONSTPTR(typename TIndex::IndexData) *voxelIndex,
+		const THREADPTR(Vector3f) &point,
+		THREADPTR(typename TIndex::IndexCache) &cache
+) {
+	TVoxel resn;
+	Vector3f ret = 0.0f;
+	bool isFound;
+	Vector3f coeff;
+	Vector3i pos; TO_INT_FLOOR3(pos, coeff, point);
+
+	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 0, 0), isFound, cache);
+	ret += (1.0f - coeff.x) * (1.0f - coeff.y) * (1.0f - coeff.z) * resn.clr.toFloat();
+
+	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 0, 0), isFound, cache);
+	ret += (coeff.x) * (1.0f - coeff.y) * (1.0f - coeff.z) * resn.clr.toFloat();
+
+	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 1, 0), isFound, cache);
+	ret += (1.0f - coeff.x) * (coeff.y) * (1.0f - coeff.z) * resn.clr.toFloat();
+
+	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 1, 0), isFound, cache);
+	ret += (coeff.x) * (coeff.y) * (1.0f - coeff.z) * resn.clr.toFloat();
+
+	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 0, 1), isFound, cache);
+	ret += (1.0f - coeff.x) * (1.0f - coeff.y) * coeff.z * resn.clr.toFloat();
+
+	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 0, 1), isFound, cache);
+	ret += (coeff.x) * (1.0f - coeff.y) * coeff.z * resn.clr.toFloat();;
+
+	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(0, 1, 1), isFound, cache);
+	ret += (1.0f - coeff.x) * (coeff.y) * coeff.z * resn.clr.toFloat();
+
+	resn = readVoxel(voxelData, voxelIndex, pos + Vector3i(1, 1, 1), isFound, cache);
+	ret += (coeff.x) * (coeff.y) * coeff.z * resn.clr.toFloat();
+
+	return ret / 255.0f;
+}
+
 template<class TVoxel>
 _CPU_AND_GPU_CODE_ inline Vector4f readFromSDF_color4u_interpolated(DEVICEPTR(const TVoxel) *voxelData, DEVICEPTR(const ITMVoxelBlockHHash::IndexData) *voxelIndex, Vector3f point, THREADPTR(ITMVoxelBlockHHash::IndexCache) & cache)
 {
@@ -844,6 +885,14 @@ template<bool hasColor,class TVoxel,class TIndex> struct VoxelColorReader;
 
 template<class TVoxel, class TIndex>
 struct VoxelColorReader<false,TVoxel,TIndex> {
+        _CPU_AND_GPU_CODE_ static Vector3f interpolate3(
+		  const CONSTPTR(TVoxel) *voxelData,
+		  const CONSTPTR(typename TIndex::IndexData) *voxelIndex,
+		  const THREADPTR(Vector3f) & point
+         ){
+	  return Vector3f(0.0f,0.0f,0.0f);
+        }
+        
 	_CPU_AND_GPU_CODE_ static Vector4f interpolate(const CONSTPTR(TVoxel) *voxelData, const CONSTPTR(typename TIndex::IndexData) *voxelIndex,
 		const THREADPTR(Vector3f) & point)
 	{ return Vector4f(0.0f,0.0f,0.0f,0.0f); }
@@ -851,6 +900,15 @@ struct VoxelColorReader<false,TVoxel,TIndex> {
 
 template<class TVoxel, class TIndex>
 struct VoxelColorReader<true,TVoxel,TIndex> {
+         _CPU_AND_GPU_CODE_ static Vector3f interpolate3(
+		const CONSTPTR(TVoxel) *voxelData,
+		const CONSTPTR(typename TIndex::IndexData) *voxelIndex,
+		const THREADPTR(Vector3f) & point
+	   ){
+		typename TIndex::IndexCache cache;
+		return readFromSDF_color4u_interpolated_noalpha<TVoxel,TIndex>(voxelData, voxelIndex, point, cache);
+           }
+           
 	_CPU_AND_GPU_CODE_ static Vector4f interpolate(const CONSTPTR(TVoxel) *voxelData, const CONSTPTR(typename TIndex::IndexData) *voxelIndex,
 		const THREADPTR(Vector3f) & point)
 	{
@@ -858,4 +916,3 @@ struct VoxelColorReader<true,TVoxel,TIndex> {
 		return readFromSDF_color4u_interpolated(voxelData, voxelIndex, point, cache);
 	}
 };
-

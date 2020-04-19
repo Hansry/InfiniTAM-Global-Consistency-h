@@ -47,9 +47,31 @@ void ITMMeshingEngine_CPU<TVoxel, ITMVoxelBlockHash>::MeshScene(ITMMesh *mesh, c
 
 			for (int i = 0; triangleTable[cubeIndex][i] != -1; i += 3)
 			{
-				triangles[noTriangles].p0 = vertList[triangleTable[cubeIndex][i]] * factor;
-				triangles[noTriangles].p1 = vertList[triangleTable[cubeIndex][i + 1]] * factor;
-				triangles[noTriangles].p2 = vertList[triangleTable[cubeIndex][i + 2]] * factor;
+			        Vector3f p0 = vertList[triangleTable[cubeIndex][i]];
+				Vector3f p1 = vertList[triangleTable[cubeIndex][i + 1]];
+				Vector3f p2 = vertList[triangleTable[cubeIndex][i + 2]];
+				triangles[noTriangles].p0 = p0 * factor;
+				triangles[noTriangles].p1 = p1 * factor;
+				triangles[noTriangles].p2 = p2 * factor;
+				
+				Vector3f c0 =  VoxelColorReader<TVoxel::hasColorInformation, TVoxel, ITMVoxelBlockHash>::interpolate3(
+								localVBA,
+								hashTable,
+								p0);
+				
+				Vector3f c1 =   VoxelColorReader<TVoxel::hasColorInformation, TVoxel, ITMVoxelBlockHash>::interpolate3(
+								localVBA,
+								hashTable,
+								p1);
+				
+				Vector3f c2 =   VoxelColorReader<TVoxel::hasColorInformation, TVoxel, ITMVoxelBlockHash>::interpolate3(
+								localVBA,
+								hashTable,
+								p2);
+
+				triangles[noTriangles].c0 = c0;
+				triangles[noTriangles].c1 = c1;
+				triangles[noTriangles].c2 = c2;
 
 				if (noTriangles < noMaxTriangles - 1) {
 				  noTriangles++;
