@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <fstream>
 #include <sstream>
+#include <iostream>
 
 namespace ITMLib
 {
@@ -72,6 +73,7 @@ namespace ITMLib
 					// kernel, which runs fast but is memory-hungry, in order to really support
 					// arbitrary-sized maps.
 					printf("Starting to write mesh...\n");
+					int count = 0;
 					for (uint i = 0; i < noTotalTriangles; i++) {
 						if ((i + 1) % 100000 == 0) {
 							printf("Triangle %d/%d\n", i + 1, noTotalTriangles);
@@ -79,6 +81,10 @@ namespace ITMLib
 						const Vector3f &c0 = triangleArray[i].c0;
 						const Vector3f &c1 = triangleArray[i].c1;
 						const Vector3f &c2 = triangleArray[i].c2;
+						if((c0.r < 0.01 && c0.b < 0.01 && c0.g < 0.01) || (c1.r < 0.01 && c1.b < 0.01 && c1.g < 0.01) || (c2.r < 0.01 && c2.b < 0.01 && c2.g < 0.01)){
+						  count ++;
+						  continue;
+						}
 						fprintf(f,
 								"v %f %f %f %f %f %f\n",
 								triangleArray[i].p0.x,
@@ -105,7 +111,7 @@ namespace ITMLib
 								c2.b);
 					}
 
-					for (uint i = 0; i<noTotalTriangles; i++) {
+					for (uint i = 0; i<(noTotalTriangles-count); i++) {
 						fprintf(f, "f %d %d %d\n", i * 3 + 2 + 1, i * 3 + 1 + 1, i * 3 + 0 + 1);
 					}
 					fclose(f);
